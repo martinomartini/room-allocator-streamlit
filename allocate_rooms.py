@@ -26,10 +26,7 @@ with open(ROOMS_FILE, "r") as f:
 project_rooms = [r for r in rooms if r["name"] != "Oasis"]
 oasis = next((r for r in rooms if r["name"] == "Oasis"), None)
 
-from datetime import datetime, timedelta
-import pytz
-
-# Define the updated run_allocation function with optimized room fitting
+# --- Allocation Function ---
 def run_allocation(database_url, only=None):
     try:
         conn = psycopg2.connect(database_url)
@@ -59,53 +56,69 @@ def run_allocation(database_url, only=None):
             def assign_combo(group, d1_label, d2_label):
                 d1 = day_mapping[d1_label]
                 d2 = day_mapping[d2_label]
-                for team_name, team_size, _ in random.sample(group, len(group)):
-                    available_d1 = [r for r in sorted(project_rooms, key=lambda x: x["capacity"])
-                                    if r["capacity"] >= team_size and r["name"] not in used_rooms[d1]]
-                    available_d2 = [r for r in sorted(project_rooms, key=lambda x: x["capacity"])
-                                    if r["capacity"] >= team_size and r["name"] not in used_rooms[d2]]
-                    if available_d1 and available_d2:
-                        room1 = available_d1[0]["name"]
-                        room2 = available_d2[0]["name"]
+                remaining = []
+
+                for team_name, team_size, _ in sorted(group, key=lambda x: -x[1]):
+                    available_d1 = [r for r in project_rooms if r["name"] not in used_rooms[d1] and r["capacity"] >= team_size]
+                    available_d2 = [r for r in project_rooms if r["name"] not in used_rooms[d2] and r["capacity"] >= team_size]
+
+                    exact_d1 = [r for r in available_d1 if r["capacity"] == team_size]
+                    exact_d2 = [r for r in available_d2 if r["capacity"] == team_size]
+
+                    if exact_d1 and exact_d2:
+                        room1 = exact_d1[0]["name"]
+                        room2 = exact_d2[0]["name"]
+                    elif available_d1 and available_d2:
+                        room1 = sorted(available_d1, key=lambda r: r["capacity"])[0]["name"]
+                        room2 = sorted(available_d2, key=lambda r: r["capacity"])[0]["name"]
+                    else:
+                        remaining.append((team_name, team_size, _))
+                        continue
+
+                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room1, d1))
+                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room2, d2))
+                    used_rooms[d1].append(room1)
+                    used_rooms[d2].append(room2)
+                    team_to_days[team_name] = [d1, d2]
+
+                return remaining
+
+            # Primary assignment
+            unplaced = assign_combo(mon_wed, "Monday", "Wednesday")
+            unplaced += assign_combo(tue_thu, "Tuesday", "Thursday")
+
+            # Final fallback: any 2 available days
+            for team_name, team_size, _ in unplaced:
+                placed = False
+                for d1 in day_mapping.values():
+                    for d2 in day_mapping.values():
+                        if d1 == d2:
+                            continue
+
+                        available_d1 = [r for r in project_rooms if r["name"] not in used_rooms[d1] and r["capacity"] >= team_size]
+                        available_d2 = [r for r in project_rooms if r["name"] not in used_rooms[d2] and r["capacity"] >= team_size]
+
+                        exact_d1 = [r for r in available_d1 if r["capacity"] == team_size]
+                        exact_d2 = [r for r in available_d2 if r["capacity"] == team_size]
+
+                        if exact_d1 and exact_d2:
+                            room1 = exact_d1[0]["name"]
+                            room2 = exact_d2[0]["name"]
+                        elif available_d1 and available_d2:
+                            room1 = sorted(available_d1, key=lambda r: r["capacity"])[0]["name"]
+                            room2 = sorted(available_d2, key=lambda r: r["capacity"])[0]["name"]
+                        else:
+                            continue
+
                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room1, d1))
                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room2, d2))
                         used_rooms[d1].append(room1)
                         used_rooms[d2].append(room2)
                         team_to_days[team_name] = [d1, d2]
-
-            assign_combo(mon_wed, "Monday", "Wednesday")
-            assign_combo(tue_thu, "Tuesday", "Thursday")
-
-            placed_teams = set(team_to_days.keys())
-            unplaced_teams = [t for t, _, _ in team_preferences if t not in placed_teams]
-
-            # --- Final fallback: any room, any day ---
-            for team_name in random.sample(unplaced_teams, len(unplaced_teams)):
-                team_size = next(s for t, s, _ in team_preferences if t == team_name)
-                all_days = list(day_mapping.values())
-
-                for i in range(len(all_days)):
-                    for j in range(len(all_days)):
-                        if i == j:
-                            continue
-                        d1 = all_days[i]
-                        d2 = all_days[j]
-                        available_d1 = [r for r in sorted(project_rooms, key=lambda x: x["capacity"])
-                                        if r["name"] not in used_rooms[d1]]
-                        available_d2 = [r for r in sorted(project_rooms, key=lambda x: x["capacity"])
-                                        if r["name"] not in used_rooms[d2]]
-
-                        if available_d1 and available_d2:
-                            room1 = available_d1[0]["name"]
-                            room2 = available_d2[0]["name"]
-                            cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room1, d1))
-                            cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room2, d2))
-                            used_rooms[d1].append(room1)
-                            used_rooms[d2].append(room2)
-                            break
-                    else:
-                        continue
-                    break
+                        placed = True
+                        break
+                    if placed:
+                        break
 
         # --- Oasis Allocation ---
         if only in [None, "oasis"]:
@@ -120,7 +133,7 @@ def run_allocation(database_url, only=None):
                 for name, d1, d2, d3, d4, d5 in person_rows
             }
 
-            # 1. Everyone gets one preferred day
+            # Round 1: assign one preferred day
             for name, prefs in person_prefs.items():
                 for day in prefs:
                     date = day_mapping[day]
@@ -130,7 +143,7 @@ def run_allocation(database_url, only=None):
                         person_to_days[name] = [date]
                         break
 
-            # 2. Assign additional preferred days if capacity allows
+            # Round 2: assign extra preferred days
             for name, prefs in person_prefs.items():
                 for day in prefs:
                     date = day_mapping[day]
