@@ -31,7 +31,7 @@ oasis = next((r for r in AVAILABLE_ROOMS if r["name"] == "Oasis"), {"capacity": 
 
 @st.cache_resource
 def get_db_connection_pool():
-    return psycopg2.pool.SimpleConnectionPool(1, 5, dsn=DATABASE_URL)
+    return psycopg2.pool.SimpleConnectionPool(1, 25, dsn=DATABASE_URL)
 
 def get_connection(pool): return pool.getconn()
 def return_connection(pool, conn): pool.putconn(conn)
