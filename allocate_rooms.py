@@ -26,28 +26,45 @@ with open(ROOMS_FILE, "r") as f:
 project_rooms = [r for r in rooms if r["name"] != "Oasis"]
 oasis = next((r for r in rooms if r["name"] == "Oasis"), None)
 
+from datetime import datetime, timedelta
+import pytz
+
+# Define the updated run_allocation function with optimized room fitting
 def run_allocation(database_url, only=None):
+    import psycopg2
+    import random
+
+    OFFICE_TIMEZONE = pytz.timezone("Europe/Amsterdam")
+    now = datetime.now(OFFICE_TIMEZONE)
+    this_monday = now - timedelta(days=now.weekday())
+    day_mapping = {
+        "Monday": this_monday.date(),
+        "Tuesday": (this_monday + timedelta(days=1)).date(),
+        "Wednesday": (this_monday + timedelta(days=2)).date(),
+        "Thursday": (this_monday + timedelta(days=3)).date(),
+    }
+
+    import os, json
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    ROOMS_FILE = os.path.join(BASE_DIR, "rooms.json")
+    with open(ROOMS_FILE, "r") as f:
+        rooms = json.load(f)
+
+    project_rooms = [r for r in rooms if r["name"] != "Oasis"]
+    oasis = next((r for r in rooms if r["name"] == "Oasis"), None)
+
     try:
         conn = psycopg2.connect(database_url)
         cur = conn.cursor()
+        cur.execute("DELETE FROM weekly_allocations")
 
-        # --- Delete only relevant allocations ---
-        if only == "project":
-            cur.execute("DELETE FROM weekly_allocations WHERE room_name != 'Oasis'")
-        elif only == "oasis":
-            cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis'")
-        else:
-            cur.execute("DELETE FROM weekly_allocations")
-
-        # --- Project Room Allocation ---
-        team_to_days = {}
-        if only in [None, "project"]:
+        if only != "oasis":
+            # --- Project Rooms ---
             cur.execute("SELECT team_name, team_size, preferred_days FROM weekly_preferences")
             team_preferences = cur.fetchall()
-
             used_rooms = {d: [] for d in day_mapping.values()}
-            mon_wed = []
-            tue_thu = []
+            team_to_days = {}
+            mon_wed, tue_thu = [], []
 
             for team_name, team_size, preferred_str in team_preferences:
                 preferred_days = sorted([d.strip() for d in preferred_str.split(",") if d.strip() in day_mapping])
@@ -57,14 +74,21 @@ def run_allocation(database_url, only=None):
                     tue_thu.append((team_name, team_size, preferred_days))
 
             def assign_combo(group, d1_label, d2_label):
-                d1 = day_mapping[d1_label]
-                d2 = day_mapping[d2_label]
-                for team_name, team_size, _ in random.sample(group, len(group)):
-                    available_d1 = [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d1]]
-                    available_d2 = [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d2]]
+                d1, d2 = day_mapping[d1_label], day_mapping[d2_label]
+                group.sort(key=lambda x: -x[1])
+                random.shuffle(group)
+                for team_name, team_size, _ in group:
+                    available_d1 = sorted(
+                        [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d1]],
+                        key=lambda r: r["capacity"]
+                    )
+                    available_d2 = sorted(
+                        [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d2]],
+                        key=lambda r: r["capacity"]
+                    )
                     if available_d1 and available_d2:
-                        room1 = random.choice(available_d1)["name"]
-                        room2 = random.choice(available_d2)["name"]
+                        room1 = available_d1[0]["name"]
+                        room2 = available_d2[0]["name"]
                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room1, d1))
                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room2, d2))
                         used_rooms[d1].append(room1)
@@ -74,7 +98,6 @@ def run_allocation(database_url, only=None):
             assign_combo(mon_wed, "Monday", "Wednesday")
             assign_combo(tue_thu, "Tuesday", "Thursday")
 
-            # Fallback assignment
             placed_teams = set(team_to_days.keys())
             all_teams = {t for t, _, _ in team_preferences}
             unplaced = list(all_teams - placed_teams)
@@ -84,37 +107,37 @@ def run_allocation(database_url, only=None):
                 preferred_str = next(p for t, _, p in team_preferences if t == team_name)
                 preferred_days = sorted([d.strip() for d in preferred_str.split(",") if d.strip() in day_mapping])
                 fallback = ["Tuesday", "Thursday"] if preferred_days == ["Monday", "Wednesday"] else ["Monday", "Wednesday"]
-
-                d1 = day_mapping[fallback[0]]
-                d2 = day_mapping[fallback[1]]
-                available_d1 = [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d1]]
-                available_d2 = [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d2]]
-
+                d1, d2 = day_mapping[fallback[0]], day_mapping[fallback[1]]
+                available_d1 = sorted(
+                    [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d1]],
+                    key=lambda r: r["capacity"]
+                )
+                available_d2 = sorted(
+                    [r for r in project_rooms if r["capacity"] >= team_size and r["name"] not in used_rooms[d2]],
+                    key=lambda r: r["capacity"]
+                )
                 if available_d1 and available_d2:
-                    room1 = random.choice(available_d1)["name"]
-                    room2 = random.choice(available_d2)["name"]
+                    room1 = available_d1[0]["name"]
+                    room2 = available_d2[0]["name"]
                     cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room1, d1))
                     cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (team_name, room2, d2))
                     used_rooms[d1].append(room1)
                     used_rooms[d2].append(room2)
                     team_to_days[team_name] = [d1, d2]
 
-        # --- Oasis Allocation ---
-        person_to_days = {}
-        if only in [None, "oasis"]:
+        if only != "project":
+            # --- Oasis Allocation (same as before) ---
             cur.execute("SELECT person_name, preferred_day_1, preferred_day_2, preferred_day_3, preferred_day_4, preferred_day_5 FROM oasis_preferences")
             person_rows = cur.fetchall()
             random.shuffle(person_rows)
-
             oasis_used = {d: set() for d in day_mapping.values()}
-
-            person_prefs = {
+            person_to_days = {
                 name: [d for d in [d1, d2, d3, d4, d5] if d and d in day_mapping]
                 for name, d1, d2, d3, d4, d5 in person_rows
             }
 
-            # Round 1: assign everyone one preferred day
-            for name, prefs in person_prefs.items():
+            # Round 1
+            for name, prefs in person_to_days.items():
                 for day in prefs:
                     date = day_mapping[day]
                     if len(oasis_used[date]) < oasis["capacity"]:
@@ -123,8 +146,8 @@ def run_allocation(database_url, only=None):
                         person_to_days[name] = [date]
                         break
 
-            # Round 2: assign more preferred days if room
-            for name, prefs in person_prefs.items():
+            # Round 2
+            for name, prefs in person_to_days.items():
                 for day in prefs:
                     date = day_mapping[day]
                     if name not in oasis_used[date] and len(oasis_used[date]) < oasis["capacity"]:
@@ -135,7 +158,6 @@ def run_allocation(database_url, only=None):
         conn.commit()
         cur.close()
         conn.close()
-
         return True, []
     except Exception as e:
         print(f"Allocation failed: {e}")
