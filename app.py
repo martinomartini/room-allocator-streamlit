@@ -520,7 +520,7 @@ from datetime import timedelta
 today = datetime.now(OFFICE_TIMEZONE).date()
 this_monday = today - timedelta(days=today.weekday())
 
-st.header("🆕 Add Yourself to Oasis Allocation")
+st.header("Add Yourself to Oasis Allocation")
 with st.form("oasis_add_form"):
     new_name = st.text_input("Your Name")
     new_days = st.multiselect("Select one or more days:", ["Monday", "Tuesday", "Wednesday", "Thursday"])
