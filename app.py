@@ -158,8 +158,8 @@ def insert_preference(pool, team, contact, size, days):
     if size < 3:
         st.error("❌ Team size must be at least 3.")
         return False
-    if size > 5:
-        st.error("❌ Team size cannot exceed 5.")
+    if size > 6:
+        st.error("❌ Team size cannot exceed 6.")
         return False
     conn = get_connection(pool)
     try:
@@ -237,7 +237,7 @@ st.title("📅 Weekly Room Allocator for TS")
 st.info("""
 💡 **How This Works:**
 
-- 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible.
+- 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible. There are 6 rooms for 4 persons and 1 room for 6 persons.
 - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. There are 16 places in the Oasis.
 - ❗ You may only submit **once**. If you need to change your input, contact an admin.
 - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. The allocations will be shared on **Thursday at 16:00**.
@@ -451,7 +451,7 @@ st.header("Submit Team Preference")
 with st.form("team_form"):
     name = st.text_input("Team Name")
     contact = st.text_input("Contact Person")
-    size = st.number_input("Team Size", min_value=1, max_value=5)
+    size = st.number_input("Team Size", min_value=1, max_value=6)
     choice = st.selectbox("Preferred Days", ["Monday and Wednesday", "Tuesday and Thursday"])
     submit = st.form_submit_button("Submit")
     if submit:
