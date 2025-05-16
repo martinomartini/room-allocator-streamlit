@@ -1,30 +1,30 @@
-name: Weekly Room Allocation
+# name: Weekly Room Allocation
 
-on:
-  schedule:
-    - cron: '1 0 * * 6'  # Every Saturday at 00:01 UTC
-  workflow_dispatch:     # Allow manual run
+# on:
+#   schedule:
+#     - cron: '1 0 * * 6'  # Every Saturday at 00:01 UTC
+#   workflow_dispatch:     # Allow manual run
 
-jobs:
-  allocate:
-    runs-on: ubuntu-latest
+# jobs:
+#   allocate:
+#     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+#     steps:
+#       - name: Checkout code
+#         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+#       - name: Set up Python
+#         uses: actions/setup-python@v4
+#         with:
+#           python-version: '3.10'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install psycopg2-binary pytz
+#       - name: Install dependencies
+#         run: |
+#           python -m pip install --upgrade pip
+#           pip install psycopg2-binary pytz
 
-      - name: Run allocation script
-        env:
-          DATABASE_URL: ${{ secrets.SUPABASE_DB_URI }}
-          OFFICE_TIMEZONE: 'Europe/Amsterdam'
-        run: python allocate_rooms.py
+#       - name: Run allocation script
+#         env:
+#           DATABASE_URL: ${{ secrets.SUPABASE_DB_URI }}
+#           OFFICE_TIMEZONE: 'Europe/Amsterdam'
+#         run: python allocate_rooms.py
