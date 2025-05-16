@@ -242,7 +242,7 @@ st.info("""
 - ❗ You may only submit **once**. If you need to change your input, contact an admin.
 - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. The allocations will be shared on **Thursday at 16:00**.
 - 🌿 **Oasis preferences** can be submitted **from Wednesday 09:00 until Friday 16:00**, and allocation will be done at **Friday 16:00**.
-- ✅ Allocations are refreshed **weekly** by an admin.
+- ✅ Allocations are refreshed **weekly** by an admin. 
         
 ---
 
