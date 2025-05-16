@@ -233,11 +233,11 @@ def reset_allocations(pool):
         return_connection(pool, conn)
 
 # --- UI ---
-st.title("📅 Weekly Room Allocator")
+st.title("📅 Weekly Room Allocator for TS")
 st.info("""
 💡 **How This Works:**
 
-- 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**.
+- 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible.
 - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. There are 16 places in the Oasis.
 - ❗ You may only submit **once**. If you need to change your input, contact an admin.
 - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. The allocations will be shared on **Thursday at 16:00**.
