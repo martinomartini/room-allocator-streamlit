@@ -278,18 +278,12 @@ with st.expander("🔐 Admin Controls"):
         st.subheader("🧠 Project Room Admin")
         if st.button("🚀 Run Project Room Allocation"):
             success, _ = run_allocation(DATABASE_URL, only="project")
-            if success:
-                st.success("✅ Project room allocation completed.")
-            else:
-                st.error("❌ Project room allocation failed.")
+            st.success("✅ Project room allocation completed.") if success else st.error("❌ Project room allocation failed.")
 
         st.subheader("🌿 Oasis Admin")
         if st.button("🎲 Run Oasis Allocation"):
             success, _ = run_allocation(DATABASE_URL, only="oasis")
-            if success:
-                st.success("✅ Oasis allocation completed.")
-            else:
-                st.error("❌ Oasis allocation failed.")
+            st.success("✅ Oasis allocation completed.") if success else st.error("❌ Oasis allocation failed.")
 
         # --- Project Room Allocations Editing ---
         st.subheader("📌 Project Room Allocations")
@@ -299,10 +293,8 @@ with st.expander("🔐 Admin Controls"):
                 editable_alloc = st.data_editor(alloc_df, num_rows="dynamic", use_container_width=True, key="edit_allocations")
                 if st.button("💾 Save Project Room Allocation Changes"):
                     try:
-                        from datetime import datetime, timedelta
                         today = datetime.now(OFFICE_TIMEZONE).date()
                         this_monday = today - timedelta(days=today.weekday())
-
                         conn = get_connection(pool)
                         with conn.cursor() as cur:
                             cur.execute("DELETE FROM weekly_allocations WHERE room_name != 'Oasis'")
@@ -406,7 +398,7 @@ with st.expander("🔐 Admin Controls"):
         else:
             st.info("No team preferences submitted yet.")
 
-        # --- Oasis Preferences Editing ---
+        # --- Oasis Preferences Editing (SAFE, supports 5 days) ---
         st.subheader("🌿 Oasis Preferences")
         df2 = get_oasis_preferences(pool)
         if not df2.empty:
@@ -426,14 +418,15 @@ with st.expander("🔐 Admin Controls"):
                                     preferred_day_4,
                                     preferred_day_5,
                                     submission_time
-                                ) VALUES (%s, %s, %s, %s, %s, %s, NOW())
+                                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                             """, (
                                 row["Person"],
-                                row.get("preferred_day_1"),
-                                row.get("preferred_day_2"),
-                                row.get("preferred_day_3"),
-                                row.get("preferred_day_4"),
-                                row.get("preferred_day_5"),
+                                row["Day 1"],
+                                row["Day 2"],
+                                row.get("Day 3"),
+                                row.get("Day 4"),
+                                row.get("Day 5"),
+                                row["Submitted At"]
                             ))
                         conn.commit()
                     st.success("✅ Oasis preferences updated.")
