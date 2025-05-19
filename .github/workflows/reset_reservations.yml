@@ -1,53 +1,53 @@
-name: Daily Reservation Reset
+# name: Daily Reservation Reset
 
-on:
-  schedule:
-    - cron: '0 16 * * *'  # 16:00 UTC = 18:00 Europe/Amsterdam
-  workflow_dispatch:       # Allow manual trigger from Actions tab
+# on:
+#   schedule:
+#     - cron: '0 16 * * *'  # 16:00 UTC = 18:00 Europe/Amsterdam
+#   workflow_dispatch:       # Allow manual trigger from Actions tab
 
-jobs:
-  reset-database:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client --no-install-recommends
+# jobs:
+#   reset-database:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Install PostgreSQL client
+#         run: sudo apt-get update && sudo apt-get install -y postgresql-client --no-install-recommends
 
-      - name: Clear Reservations Table
-        env:
-          SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
-        run: |
-          if [ -z "$SUPABASE_DB_URI" ]; then
-            echo "❌ Error: SUPABASE_DB_URI is not set in GitHub Secrets."
-            exit 1
-          fi
+#       - name: Clear Reservations Table
+#         env:
+#           SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
+#         run: |
+#           if [ -z "$SUPABASE_DB_URI" ]; then
+#             echo "❌ Error: SUPABASE_DB_URI is not set in GitHub Secrets."
+#             exit 1
+#           fi
 
-          echo "🔗 Connecting to Supabase and clearing the reservations table..."
+#           echo "🔗 Connecting to Supabase and clearing the reservations table..."
 
-          # Extract connection components
-          PGPASSWORD=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//[^:]+:([^@]+)@.*|\1|')
-          PGUSER=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//([^:]+):.*|\1|')
-          PGHOST=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*@([^:/]+).*|\1|')
-          PGPORT=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*:([0-9]+)/.*|\1|')
-          PGDATABASE=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*/([^?]+).*|\1|')
+#           # Extract connection components
+#           PGPASSWORD=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//[^:]+:([^@]+)@.*|\1|')
+#           PGUSER=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//([^:]+):.*|\1|')
+#           PGHOST=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*@([^:/]+).*|\1|')
+#           PGPORT=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*:([0-9]+)/.*|\1|')
+#           PGDATABASE=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*/([^?]+).*|\1|')
 
-          export PGPASSWORD
+#           export PGPASSWORD
 
-          echo "ℹ️ Host: $PGHOST"
-          echo "ℹ️ Database: $PGDATABASE"
-          echo "ℹ️ User: $PGUSER"
+#           echo "ℹ️ Host: $PGHOST"
+#           echo "ℹ️ Database: $PGDATABASE"
+#           echo "ℹ️ User: $PGUSER"
 
-          # Execute the TRUNCATE command
-          psql \
-            --host="$PGHOST" \
-            --port="$PGPORT" \
-            --username="$PGUSER" \
-            --dbname="$PGDATABASE" \
-            -c "TRUNCATE TABLE reservations RESTART IDENTITY;" \
-            "sslmode=require"
+#           # Execute the TRUNCATE command
+#           psql \
+#             --host="$PGHOST" \
+#             --port="$PGPORT" \
+#             --username="$PGUSER" \
+#             --dbname="$PGDATABASE" \
+#             -c "TRUNCATE TABLE reservations RESTART IDENTITY;" \
+#             "sslmode=require"
 
-          if [ $? -eq 0 ]; then
-            echo "✅ Reservations table cleared successfully."
-          else
-            echo "❌ Error: Failed to clear reservations table."
-            exit 1
-          fi
+#           if [ $? -eq 0 ]; then
+#             echo "✅ Reservations table cleared successfully."
+#           else
+#             echo "❌ Error: Failed to clear reservations table."
+#             exit 1
+#           fi
