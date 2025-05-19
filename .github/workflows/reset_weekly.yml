@@ -1,26 +1,26 @@
-name: Weekly Reset
+# name: Weekly Reset
 
-on:
-  schedule:
-    - cron: '0 0 * * 5'  # Every Friday at 00:00 UTC
-  workflow_dispatch:
+# on:
+#   schedule:
+#     - cron: '0 0 * * 5'  # Every Friday at 00:00 UTC
+#   workflow_dispatch:
 
-jobs:
-  reset-db:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+# jobs:
+#   reset-db:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Install PostgreSQL client
+#         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 
-      - name: Reset allocations table
-        env:
-          SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
-        run: |
-          PGPASSWORD=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//[^:]+:([^@]+)@.*|\1|')
-          PGUSER=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//([^:]+):.*|\1|')
-          PGHOST=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*@([^:/]+).*|\1|')
-          PGPORT=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*:([0-9]+)/.*|\1|')
-          PGDATABASE=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*/([^?]+).*|\1|')
+#       - name: Reset allocations table
+#         env:
+#           SUPABASE_DB_URI: ${{ secrets.SUPABASE_DB_URI }}
+#         run: |
+#           PGPASSWORD=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//[^:]+:([^@]+)@.*|\1|')
+#           PGUSER=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*//([^:]+):.*|\1|')
+#           PGHOST=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*@([^:/]+).*|\1|')
+#           PGPORT=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*:([0-9]+)/.*|\1|')
+#           PGDATABASE=$(echo "$SUPABASE_DB_URI" | sed -E 's|.*/([^?]+).*|\1|')
 
-          export PGPASSWORD
-          psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "DELETE FROM weekly_allocations;" "sslmode=require"
+#           export PGPASSWORD
+#           psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d "$PGDATABASE" -c "DELETE FROM weekly_allocations;" "sslmode=require"
