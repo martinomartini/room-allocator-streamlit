@@ -516,7 +516,7 @@ this_monday = today - timedelta(days=today.weekday())
 st.header("Add Yourself to Oasis Allocation")
 with st.form("oasis_add_form"):
     new_name = st.text_input("Your Name")
-    new_days = st.multiselect("Select one or more days:", ["Monday", "Tuesday", "Wednesday", "Thursday"])
+    new_days = st.multiselect("Select one or more days:", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
     add_submit = st.form_submit_button("➕ Add me to the schedule")
 
     if add_submit:
