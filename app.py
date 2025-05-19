@@ -440,7 +440,7 @@ with st.expander("🔐 Admin Controls"):
         st.error("❌ Incorrect password.")
 
 # --- Team Form ---
-st.header("Submit Team Preference")
+st.header("Request project room for teams of 3 or more for the week of 26 May - to be filled in between Wednesday 21 May from 09:00 and Thursday 22 May 16:00")
 with st.form("team_form"):
     name = st.text_input("Team Name")
     contact = st.text_input("Contact Person")
@@ -456,7 +456,7 @@ with st.form("team_form"):
             st.success("✅ Submitted!")
 
 # --- Oasis Form ---
-st.header("Reserve Oasis Seat")
+st.header("Reserve Oasis Seat for the week of 26 May - Personally before Friday 23 May 16:00, if you are not allocated on a project of 3 or more")
 with st.form("oasis_form"):
     person = st.text_input("Your Name")
     selected_days = st.multiselect(
@@ -513,7 +513,7 @@ from datetime import timedelta
 today = datetime.now(OFFICE_TIMEZONE).date()
 this_monday = today - timedelta(days=today.weekday())
 
-st.header("Add Yourself to Oasis Allocation")
+st.header("Add yourself to Oasis Allocation - Personally - Anytime, if there is availability")
 with st.form("oasis_add_form"):
     new_name = st.text_input("Your Name")
     new_days = st.multiselect("Select one or more days:", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
