@@ -269,6 +269,7 @@ st.info(f"Current Office Time: **{now_local.strftime('%Y-%m-%d %H:%M:%S')}** ({O
 pool = get_db_connection_pool()
 
 # --- Admin ---
+# --- Admin ---
 with st.expander("🔐 Admin Controls"):
     pwd = st.text_input("Enter admin password:", type="password")
     if pwd == RESET_PASSWORD:
@@ -278,12 +279,18 @@ with st.expander("🔐 Admin Controls"):
         st.subheader("🧠 Project Room Admin")
         if st.button("🚀 Run Project Room Allocation"):
             success, _ = run_allocation(DATABASE_URL, only="project")
-            st.success("✅ Project room allocation completed.") if success else st.error("❌ Project room allocation failed.")
+            if success:
+                st.success("✅ Project room allocation completed.")
+            else:
+                st.error("❌ Project room allocation failed.")
 
         st.subheader("🌿 Oasis Admin")
         if st.button("🎲 Run Oasis Allocation"):
             success, _ = run_allocation(DATABASE_URL, only="oasis")
-            st.success("✅ Oasis allocation completed.") if success else st.error("❌ Oasis allocation failed.")
+            if success:
+                st.success("✅ Oasis allocation completed.")
+            else:
+                st.error("❌ Oasis allocation failed.")
 
         # --- Project Room Allocations Editing ---
         st.subheader("📌 Project Room Allocations")
