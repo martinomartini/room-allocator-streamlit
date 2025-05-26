@@ -7,15 +7,17 @@ import random
 
 # --- Time Setup ---
 OFFICE_TIMEZONE = pytz.timezone("Europe/Amsterdam")
-now = datetime.now(OFFICE_TIMEZONE)
-this_monday = now - timedelta(days=now.weekday())
-day_mapping = {
-    "Monday": this_monday.date(),
-    "Tuesday": (this_monday + timedelta(days=1)).date(),
-    "Wednesday": (this_monday + timedelta(days=2)).date(),
-    "Thursday": (this_monday + timedelta(days=3)).date(),
-    "Friday": (this_monday + timedelta(days=4)).date(),
-}
+
+def get_day_mapping():
+    now = datetime.now(OFFICE_TIMEZONE)
+    this_monday = now - timedelta(days=now.weekday())
+    return {
+        "Monday": this_monday.date(),
+        "Tuesday": (this_monday + timedelta(days=1)).date(),
+        "Wednesday": (this_monday + timedelta(days=2)).date(),
+        "Thursday": (this_monday + timedelta(days=3)).date(),
+        "Friday": (this_monday + timedelta(days=4)).date(),
+    }
 
 # --- Load Room Setup ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -26,8 +28,9 @@ with open(ROOMS_FILE, "r") as f:
 project_rooms = [r for r in rooms if r["name"] != "Oasis"]
 oasis = next((r for r in rooms if r["name"] == "Oasis"), None)
 
-
 def run_allocation(database_url, only=None):
+    day_mapping = get_day_mapping()
+
     try:
         conn = psycopg2.connect(database_url)
         cur = conn.cursor()
@@ -96,11 +99,9 @@ def run_allocation(database_url, only=None):
 
                 return remaining
 
-            # Primary assignment
             unplaced = assign_combo(mon_wed, "Monday", "Wednesday")
             unplaced += assign_combo(tue_thu, "Tuesday", "Thursday")
 
-            # Final fallback
             for team_name, team_size, _ in unplaced:
                 placed = False
                 for d1 in day_mapping.values():
@@ -152,7 +153,6 @@ def run_allocation(database_url, only=None):
                 for name, d1, d2, d3, d4, d5 in person_rows
             }
 
-            # Round 1
             for name, prefs in person_prefs.items():
                 for day in prefs:
                     date = day_mapping[day]
@@ -162,7 +162,6 @@ def run_allocation(database_url, only=None):
                         person_to_days[name] = [date]
                         break
 
-            # Round 2
             for name, prefs in person_prefs.items():
                 for day in prefs:
                     date = day_mapping[day]
