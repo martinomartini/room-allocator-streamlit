@@ -463,7 +463,7 @@ with st.form("team_form"):
             st.success("✅ Submitted!")
 
 # --- Oasis Form ---
-st.header("Reserve Oasis Seat for the week of 26 May - Personally sumbit preference between Wednesday 28 May 09:00 until Friday 30 May 16:00")
+st.header("Reserve Oasis Seat for the week of 2 June - Personally sumbit preference between Wednesday 28 May 09:00 until Friday 30 May 16:00")
 with st.form("oasis_form"):
     person = st.text_input("Your Name")
     selected_days = st.multiselect(
