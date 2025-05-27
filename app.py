@@ -447,7 +447,7 @@ with st.expander("🔐 Admin Controls"):
         st.error("❌ Incorrect password.")
 
 # --- Team Form ---
-st.header("Request project room for teams of 3 or more for the week of 26 May - to be filled in between Wednesday 21 May 09:00 until Thursday 22 May 16:00")
+st.header("Request project room for teams of 3 or more for the week of 2 June - to be filled in between Wednesday 28 May 09:00 until Thursday 29 May 16:00")
 with st.form("team_form"):
     name = st.text_input("Team Name")
     contact = st.text_input("Contact Person")
@@ -463,7 +463,7 @@ with st.form("team_form"):
             st.success("✅ Submitted!")
 
 # --- Oasis Form ---
-st.header("Reserve Oasis Seat for the week of 26 May - Personally sumbit preference between Wednesday 21 May 09:00 until Friday 23 May 16:00")
+st.header("Reserve Oasis Seat for the week of 26 May - Personally sumbit preference between Wednesday 28 May 09:00 until Friday 30 May 16:00")
 with st.form("oasis_form"):
     person = st.text_input("Your Name")
     selected_days = st.multiselect(
