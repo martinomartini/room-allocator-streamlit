@@ -1,10 +1,11 @@
 [
+  { "name": "Room D0205", "capacity": 6 },
   { "name": "Room D0206", "capacity": 6 },
-  { "name": "Room D0207", "capacity": 4 },
   { "name": "Room D0208", "capacity": 4 },
+  { "name": "Room D0209", "capacity": 4 },
   { "name": "Room D0289", "capacity": 4 },
   { "name": "Room D0290", "capacity": 4 },
   { "name": "Room D0291", "capacity": 4 },
   { "name": "Room D0292", "capacity": 4 },
-  { "name": "Oasis", "capacity": 15 }
+  { "name": "Oasis", "capacity": 13 }
 ]
