@@ -22,7 +22,7 @@ except ImportError:
         return False, "Dummy allocation result"
 
 # --- Constants and Configuration ---
-PAGE_TITLE = "Weekly Room Allocator"
+PAGE_TITLE = "Weekly Room Allocator -- WORK IN PROGRESS BY MARTINO"
 DATABASE_URL = st.secrets.get("SUPABASE_DB_URI", os.environ.get("SUPABASE_DB_URI"))
 OFFICE_TIMEZONE_STR = st.secrets.get("OFFICE_TIMEZONE", os.environ.get("OFFICE_TIMEZONE", "Europe/Amsterdam")) # Defaulting to a common European timezone
 RESET_PASSWORD = st.secrets.get("ADMIN_RESET_PASSWORD", "trainee") # It's better to get passwords from secrets
