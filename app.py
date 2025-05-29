@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 import pytz
 import pandas as pd
 import contextlib
+import traceback
 
 # --- Local Imports (Assuming allocate_rooms.py is in the same directory) ---
 # Ensure this file exists and is correctly implemented
@@ -148,7 +149,8 @@ def get_oasis_grid_data(pool):
     df["Date"] = pd.to_datetime(df["Date"])
     df["Day"] = df["Date"].dt.strftime('%A')
     
-    grouped = df.groupby("Day")["Person"].apply(lambda x: ", ".join(sorted(set(str(p) for p in x))))) # Ensure person names are strings for sorting
+    # SYNTAX FIX APPLIED HERE
+    grouped = df.groupby("Day")["Person"].apply(lambda x: ", ".join(sorted(set(str(p) for p in x)))) # Ensure person names are strings for sorting
     grouped = grouped.reindex(DAYS_OF_WEEK, fill_value=VACANT_STATUS).reset_index()
     return grouped.rename(columns={"Day": "Weekday", "Person": "People"})
 
@@ -544,7 +546,6 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
             df_alloc["Name"] = df_alloc["Name"].astype(str)
             df_alloc["Date"] = pd.to_datetime(df_alloc["Date"]).dt.date
         
-        # FIX APPLIED HERE: Convert all names to string before sorting
         name_list_for_set = [str(n) for n in df_alloc["Name"].tolist()] + [str(NIEK_USER)]
         unique_names = sorted(list(set(name_list_for_set)))
         
@@ -614,10 +615,6 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
                                     day_idx_save = DAYS_OF_WEEK.index(day_name_save)
                                     date_obj_save = current_monday + timedelta(days=day_idx_save)
                                     
-                                    # Check if this person is already counted for this day (e.g. Niek)
-                                    # This check is complex if we allow Niek to be unselected by editor
-                                    # Simpler: just check capacity before inserting anyone new
-                                    
                                     if daily_counts[day_name_save] < oasis_capacity_val:
                                         # Check if this specific user for this day already exists from Niek's special insert
                                         cur_save.execute("SELECT 1 FROM weekly_allocations WHERE team_name = %s AND room_name = %s AND date = %s",
@@ -642,7 +639,6 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
 
     except Exception as e_load:
         st.error(f"❌ Error loading Oasis overview matrix: {e_load}")
-        import traceback
         st.text(traceback.format_exc())
 
 
@@ -662,7 +658,7 @@ def main():
     display_admin_panel(pool, OFFICE_TIMEZONE, current_monday_date)
     
     st.divider()
-    col1_forms, col2_allocs = st.columns(2) # Adjusted to two columns as per original structure
+    col1_forms, col2_allocs = st.columns(2) 
 
     with col1_forms:
         display_team_preference_form(pool)
@@ -671,7 +667,7 @@ def main():
         st.divider()
         display_add_to_oasis_form(pool, current_monday_date, OASIS_CAPACITY)
 
-    with col2_allocs: # This was missing, added back
+    with col2_allocs: 
         display_project_room_allocations(pool, current_monday_date)
         st.divider()
         display_oasis_overview_matrix(pool, current_monday_date, OASIS_CAPACITY)
