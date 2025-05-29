@@ -71,13 +71,17 @@ pool = get_db_connection_pool()
 
 st.title("📅 Weekly Room Allocator for TS")
 
-# --- Navigation Info ---
-st.info("""
-📑 **Navigate between pages using the sidebar:**
+# --- Navigation Info (moved to main content) ---
+st.success("""
+**📑 Use the sidebar to navigate between pages:**
 - **🏠 Home** - This page (General info & submit preferences)  
 - **📊 Project Room Allocation** - View allocations & admin tools
 - **🌿 Oasis Overview** - Full oasis management
 """)
+
+# Display current time at the top
+now_local = datetime.now(OFFICE_TIMEZONE)
+st.info(f"**Current Office Time:** {now_local.strftime('%Y-%m-%d %H:%M:%S')} ({OFFICE_TIMEZONE_STR})")
 
 st.info("""
 💡 **How This Works:**
@@ -107,9 +111,6 @@ st.info("""
 Only use **"Add Yourself"** if you forgot to register.
 """)
 
-now_local = datetime.now(OFFICE_TIMEZONE)
-st.info(f"Current Office Time: **{now_local.strftime('%Y-%m-%d %H:%M:%S')}** ({OFFICE_TIMEZONE_STR})")
-
 # --- Team Form ---
 st.header("Request project room for teams of 3 or more for the week of 2 June - to be filled in between Wednesday 28 May 09:00 until Thursday 29 May 16:00")
 with st.form("team_form"):
@@ -125,7 +126,7 @@ with st.form("team_form"):
         }
         if insert_preference(pool, name, contact, size, day_map[choice]):
             st.success("✅ Submitted!")
-            st.info("➡️ Check the **Project Room Allocation** page for results after the deadline.")
+            st.info("➡️ Check the **📊 Project Room Allocation** page for results after the deadline.")
 
 # --- Oasis Form ---
 st.header("Reserve Oasis Seat for the week of 2 June - Personally sumbit preference between Wednesday 28 May 09:00 until Friday 30 May 16:00")
@@ -167,7 +168,7 @@ with st.form("oasis_form"):
                         """, (person.strip(), *padded_days))
                         conn.commit()
                         st.success("✅ Oasis preference submitted!")
-                        st.info("➡️ Visit the **Oasis Overview** page for detailed tracking.")
+                        st.info("➡️ Visit the **🌿 Oasis Overview** page for detailed tracking.")
             except Exception as e:
                 st.error(f"❌ Failed to save preference: {e}")
             finally:

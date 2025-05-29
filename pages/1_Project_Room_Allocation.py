@@ -122,6 +122,10 @@ pool = get_db_connection_pool()
 
 st.title("📊 Project Room Allocation")
 
+# Display current time
+now_local = datetime.now(OFFICE_TIMEZONE)
+st.info(f"**Current Office Time:** {now_local.strftime('%Y-%m-%d %H:%M:%S')} ({OFFICE_TIMEZONE_STR})")
+
 # Current allocations
 st.header("📌 Current Project Room Allocations")
 alloc_df = get_room_grid(pool)
@@ -143,6 +147,21 @@ else:
     st.warning(f"⚠️ {len(unallocated_df)} teams submitted preferences but weren't allocated:")
     st.dataframe(unallocated_df, use_container_width=True)
 
+    with st.expander("💡 Why might teams not be allocated?"):
+        st.markdown("""
+        **Possible reasons for non-allocation:**
+        - Team size exceeds available room capacity (max 6 people)
+        - No rooms available for their preferred days (Monday/Wednesday or Tuesday/Thursday)
+        - Submitted after the deadline
+        - All appropriate rooms already allocated to other teams
+        - Technical issues with the submission
+        
+        **What to do:**
+        - Contact admin for manual allocation if space becomes available
+        - Consider splitting large teams
+        - Check if submission was successful
+        """)
+
 # All preferences
 st.header("📝 All Submitted Project Team Preferences")
 prefs_df = get_preferences(pool)
@@ -158,28 +177,34 @@ with st.expander("🔐 Admin Controls"):
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
 
-        if st.button("🚀 Run Project Room Allocation"):
-            success, _ = run_allocation(DATABASE_URL, only="project")
-            if success:
-                st.success("✅ Project room allocation completed.")
-                st.rerun()
-            else:
-                st.error("❌ Project room allocation failed.")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🚀 Run Project Room Allocation"):
+                with st.spinner("Running allocation algorithm..."):
+                    success, _ = run_allocation(DATABASE_URL, only="project")
+                    if success:
+                        st.success("✅ Project room allocation completed.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Project room allocation failed.")
 
-        if st.button("🧹 Clear Project Allocations"):
-            conn = get_connection(pool)
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM weekly_allocations WHERE room_name != 'Oasis'")
-                    conn.commit()
-                    st.success("✅ Project room allocations cleared.")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"❌ Failed to clear allocations: {e}")
-            finally:
-                return_connection(pool, conn)
+        with col2:
+            if st.button("🧹 Clear Project Allocations"):
+                conn = get_connection(pool)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM weekly_allocations WHERE room_name != 'Oasis'")
+                        conn.commit()
+                        st.success("✅ Project room allocations cleared.")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Failed to clear allocations: {e}")
+                finally:
+                    return_connection(pool, conn)
 
-        if st.button("🧽 Clear All Project Preferences"):
+        st.subheader("🗑️ Reset Data")
+        if st.button("🧽 Clear All Project Preferences", type="secondary"):
             conn = get_connection(pool)
             try:
                 with conn.cursor() as cur:

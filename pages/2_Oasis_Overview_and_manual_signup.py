@@ -42,7 +42,7 @@ def get_oasis_grid(pool):
             df["Date"] = pd.to_datetime(df["Date"])
             df["Day"] = df["Date"].dt.strftime('%A')
 
-            all_days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
+            all_days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
             grouped = df.groupby("Day")["Person"].apply(lambda x: ", ".join(sorted(set(x))))
             grouped = grouped.reindex(all_days, fill_value="Vacant").reset_index()
             grouped = grouped.rename(columns={"Day": "Weekday", "Person": "People"})
@@ -58,9 +58,20 @@ def get_oasis_preferences(pool):
     conn = get_connection(pool)
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT person_name, preferred_day_1, preferred_day_2, submission_time FROM oasis_preferences")
+            cur.execute("SELECT person_name, preferred_day_1, preferred_day_2, preferred_day_3, preferred_day_4, preferred_day_5, submission_time FROM oasis_preferences")
             rows = cur.fetchall()
-            return pd.DataFrame(rows, columns=["Person", "Day 1", "Day 2", "Submitted At"])
+            if not rows:
+                return pd.DataFrame()
+            
+            # Process the data to show all preferred days in a readable format
+            processed_rows = []
+            for row in rows:
+                name = row[0]
+                days = [day for day in row[1:6] if day is not None]
+                days_str = ", ".join(days) if days else "None"
+                processed_rows.append([name, days_str, row[6]])
+            
+            return pd.DataFrame(processed_rows, columns=["Person", "Preferred Days", "Submitted At"])
     except Exception as e:
         st.warning(f"Failed to fetch oasis preferences: {e}")
         return pd.DataFrame()
@@ -71,6 +82,10 @@ def get_oasis_preferences(pool):
 pool = get_db_connection_pool()
 
 st.title("🌿 Oasis Overview and Manual Signup")
+
+# Display current time
+now_local = datetime.now(OFFICE_TIMEZONE)
+st.info(f"**Current Office Time:** {now_local.strftime('%Y-%m-%d %H:%M:%S')} ({OFFICE_TIMEZONE_STR})")
 
 # Current allocations
 st.header("📊 Current Oasis Allocations")
@@ -93,7 +108,9 @@ else:
 today = datetime.now(OFFICE_TIMEZONE).date()
 this_monday = today - timedelta(days=today.weekday())
 
-st.header("Add yourself to Oasis Allocation - Personally - Anytime, if there is availability")
+st.header("➕ Add Yourself to Oasis (Emergency/Manual)")
+st.warning("⚠️ Use this only if you missed the regular submission deadline!")
+
 with st.form("oasis_add_form"):
     new_name = st.text_input("Your Name")
     new_days = st.multiselect("Select one or more days:", ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"])
@@ -150,28 +167,34 @@ with st.expander("🔐 Admin Controls"):
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
 
-        if st.button("🎲 Run Oasis Allocation"):
-            success, _ = run_allocation(DATABASE_URL, only="oasis")
-            if success:
-                st.success("✅ Oasis allocation completed.")
-                st.rerun()
-            else:
-                st.error("❌ Oasis allocation failed.")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("🎲 Run Oasis Allocation"):
+                with st.spinner("Running oasis allocation..."):
+                    success, _ = run_allocation(DATABASE_URL, only="oasis")
+                    if success:
+                        st.success("✅ Oasis allocation completed.")
+                        st.rerun()
+                    else:
+                        st.error("❌ Oasis allocation failed.")
 
-        if st.button("🗑️ Remove Oasis Allocations"):
-            conn = get_connection(pool)
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis'")
-                    conn.commit()
-                    st.success("✅ Oasis allocations removed.")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"❌ Failed to remove oasis allocations: {e}")
-            finally:
-                return_connection(pool, conn)
+        with col2:
+            if st.button("🗑️ Remove Oasis Allocations"):
+                conn = get_connection(pool)
+                try:
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis'")
+                        conn.commit()
+                        st.success("✅ Oasis allocations removed.")
+                        st.rerun()
+                except Exception as e:
+                    st.error(f"❌ Failed to remove oasis allocations: {e}")
+                finally:
+                    return_connection(pool, conn)
 
-        if st.button("🧽 Remove Oasis Preferences"):
+        st.subheader("🗑️ Reset Data")
+        if st.button("🧽 Remove Oasis Preferences", type="secondary"):
             conn = get_connection(pool)
             try:
                 with conn.cursor() as cur:
