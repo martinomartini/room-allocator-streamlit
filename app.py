@@ -140,7 +140,7 @@ def get_room_grid_data(pool, current_monday):
     return pd.DataFrame(grid.values())
 
 
-def get_oasis_grid_data(pool):
+def get_oasis_grid_data(pool): # This function is for the "Oasis Grid" display, not the overview matrix
     query = "SELECT team_name, date FROM weekly_allocations WHERE room_name = %s"
     data = fetch_all_from_db(pool, query, (OASIS_ROOM_NAME,))
     if not data: return pd.DataFrame()
@@ -149,8 +149,7 @@ def get_oasis_grid_data(pool):
     df["Date"] = pd.to_datetime(df["Date"])
     df["Day"] = df["Date"].dt.strftime('%A')
     
-    # SYNTAX FIX APPLIED HERE
-    grouped = df.groupby("Day")["Person"].apply(lambda x: ", ".join(sorted(set(str(p) for p in x)))) # Ensure person names are strings for sorting
+    grouped = df.groupby("Day")["Person"].apply(lambda x: ", ".join(sorted(set(str(p) for p in x)))) 
     grouped = grouped.reindex(DAYS_OF_WEEK, fill_value=VACANT_STATUS).reset_index()
     return grouped.rename(columns={"Day": "Weekday", "Person": "People"})
 
@@ -178,16 +177,15 @@ def insert_team_preference(pool, team, contact, size, days_str):
         st.error("❌ Must select Monday & Wednesday or Tuesday & Thursday.")
         return False
 
-    # Check existing preferences to prevent exceeding 2 days
     existing_query = "SELECT preferred_days FROM weekly_preferences WHERE team_name = %s"
-    existing_prefs_rows = fetch_all_from_db(pool, existing_query, (team,)) # Will be list of dicts
+    existing_prefs_rows = fetch_all_from_db(pool, existing_query, (team,)) 
     voted_days = set()
     if existing_prefs_rows:
         for row_dict in existing_prefs_rows:
             if row_dict and 'preferred_days' in row_dict and row_dict['preferred_days']:
                  voted_days.update(row_dict['preferred_days'].split(','))
             
-    if len(voted_days) >= 2 and not new_days_set.issubset(voted_days) : # Allow re-submitting same days
+    if len(voted_days) >= 2 and not new_days_set.issubset(voted_days) : 
          if len(voted_days.union(new_days_set)) > 2:
             st.error(f"❌ Max 2 days allowed per team. You have already voted for: {', '.join(voted_days) if voted_days else 'None'}.")
             return False
@@ -211,13 +209,17 @@ def insert_team_preference(pool, team, contact, size, days_str):
 def reset_table_data(pool, table_name, condition_column=None, condition_value=None, negate_condition=False):
     query = f"DELETE FROM {table_name}"
     params = None
-    if condition_column and condition_value is not None: # Ensure condition_value can be False or 0
+    if condition_column and condition_value is not None: 
         operator = "!=" if negate_condition else "="
         query += f" WHERE {condition_column} {operator} %s"
         params = (condition_value,)
     try:
         execute_db_query(pool, query, params, commit=True)
-        st.success(f"✅ Data from '{table_name}' (where {condition_column} {operator} {condition_value if params else ''}) removed.")
+        # Simplified success message
+        success_msg = f"✅ Data from '{table_name}' removed."
+        if params:
+            success_msg = f"✅ Data from '{table_name}' (where {condition_column} {operator} {condition_value}) removed."
+        st.success(success_msg)
         return True
     except Exception as e:
         st.error(f"❌ Failed to remove data from {table_name}: {e}")
@@ -226,7 +228,7 @@ def reset_table_data(pool, table_name, condition_column=None, condition_value=No
 
 # --- UI Rendering Functions ---
 def display_header_and_info(office_timezone_str, current_office_time):
-    st.title(f"📅 {PAGE_TITLE} for TS")
+    st.title(f"📅 {PAGE_TITLE} for TS") # Kept new heading style
     st.info(f"Current Office Time: **{current_office_time.strftime('%Y-%m-%d %H:%M:%S')}** ({office_timezone_str})")
     
     st.info(f"""
@@ -274,23 +276,17 @@ def admin_allocation_controls(pool):
 def admin_edit_data(pool, data_fetch_func, df_key, update_table_name, column_map_config, current_monday=None, delete_condition_col=None, delete_condition_val=None):
     st.subheader(f"📝 Edit {update_table_name.replace('_', ' ').title()}")
     
-    # Use a consistent way to get DataFrame column names for data_editor
-    df_display_cols = [details['name'] for details in column_map_config.values()]
-    
-    # Fetch data using the raw DB column names expected by get_preferences_data
     raw_db_cols = list(column_map_config.keys())
-    df = data_fetch_func(pool, raw_db_cols) if not current_monday else data_fetch_func(pool, raw_db_cols, current_monday) # Adjust if current_monday is used
+    # Pass the raw_db_cols to the data_fetch_func
+    df = data_fetch_func(pool, raw_db_cols) if not current_monday else data_fetch_func(pool, raw_db_cols, current_monday)
 
     if df is None or df.empty:
         st.info(f"No {update_table_name.replace('_', ' ')} yet to edit.")
         return
 
-    # Ensure DataFrame has columns as per display names for st.data_editor
-    # This mapping needs to be robust if get_preferences_data changes column names
-    # For now, assume get_preferences_data returns df with cols matching raw_db_cols that then get titled
-    # Let's standardise: get_preferences_data returns with raw_db_cols, we rename for display
     df_for_editor = df.copy()
-    rename_map = {raw_col: details['name'] for raw_col, details in column_map_config.items()}
+    # Rename columns for display in st.data_editor using the 'name' from column_map_config
+    rename_map = {db_col: details['name'] for db_col, details in column_map_config.items() if db_col in df_for_editor.columns}
     df_for_editor.rename(columns=rename_map, inplace=True)
     
     editable_df = st.data_editor(df_for_editor, num_rows="dynamic", use_container_width=True, key=df_key)
@@ -306,15 +302,15 @@ def admin_edit_data(pool, data_fetch_func, df_key, update_table_name, column_map
                         del_params.append(delete_condition_val)
                     cur.execute(delete_query, tuple(del_params) if del_params else None)
 
-                    insert_db_cols = list(column_map_config.keys())
+                    insert_db_cols = list(column_map_config.keys()) # These are the actual DB column names
                     placeholders = ', '.join(['%s'] * len(insert_db_cols))
                     insert_query = f"INSERT INTO {update_table_name} ({', '.join(insert_db_cols)}) VALUES ({placeholders})"
                     
-                    for _, row in editable_df.iterrows():
+                    for _, row in editable_df.iterrows(): # Iterating over displayed df
                         values = []
                         for db_col, details in column_map_config.items():
-                            df_col_name = details['name'] # Name used in data_editor
-                            val = row.get(df_col_name)
+                            df_col_name = details['name'] # Display name used in editable_df
+                            val = row.get(df_col_name)    # Get value using display name
                             val_type = details.get('type', str)
                             
                             if pd.isnull(val): values.append(None)
@@ -334,14 +330,13 @@ def admin_save_project_allocations(pool, editable_alloc_df, current_monday):
     try:
         with manage_db_connection(pool) as conn:
             with conn.cursor() as cur:
-                # Clear only non-Oasis allocations
                 cur.execute("DELETE FROM weekly_allocations WHERE room_name != %s", (OASIS_ROOM_NAME,))
                 
                 for _, row in editable_alloc_df.iterrows():
                     room_val = str(row["Room"]) if pd.notnull(row["Room"]) else None
                     if not room_val: continue
 
-                    for day_idx, day_name in enumerate(PROJECT_TEAM_DAYS): # Only Mon-Thu for project rooms
+                    for day_idx, day_name in enumerate(PROJECT_TEAM_DAYS): 
                         cell_value = row.get(day_name, "")
                         if cell_value and str(cell_value).strip() != VACANT_STATUS:
                             team_info = str(cell_value).split("(")[0].strip() 
@@ -370,13 +365,12 @@ def display_admin_panel(pool, office_timezone, current_monday):
         admin_allocation_controls(pool)
 
         st.subheader("📌 Edit Project Room Allocations")
-        alloc_df_grid = get_room_grid_data(pool, current_monday) # This returns df with "Room" and day names
+        alloc_df_grid = get_room_grid_data(pool, current_monday) 
         if not alloc_df_grid.empty:
-            # Make "Room" the index for better display if desired, or keep as column
             editable_alloc = st.data_editor(alloc_df_grid.set_index("Room") if "Room" in alloc_df_grid else alloc_df_grid, 
                                             num_rows="dynamic", use_container_width=True, key="edit_allocations")
             if st.button("💾 Save Project Room Allocation Changes", key="save_project_alloc_changes"):
-                admin_save_project_allocations(pool, editable_alloc.reset_index(), current_monday) # Pass DataFrame with "Room" as column
+                admin_save_project_allocations(pool, editable_alloc.reset_index(), current_monday) 
         else:
             st.info("No project room allocations yet to edit.")
 
@@ -417,7 +411,7 @@ def display_admin_panel(pool, office_timezone, current_monday):
 
 
 def display_team_preference_form(pool):
-    st.header("📝 Request Project Room (Teams 3-6)")
+    st.header("📝 Request Project Room (Teams 3-6)") # Kept new heading
     st.caption(f"Submit between Wednesday 09:00 - Thursday 16:00 for the upcoming week. Current office time: {datetime.now(OFFICE_TIMEZONE).strftime('%A %H:%M')}")
     with st.form("team_form"):
         name = st.text_input("Team Name")
@@ -434,10 +428,9 @@ def display_team_preference_form(pool):
                 if insert_team_preference(pool, name.strip(), contact.strip(), size, day_map[choice]):
                     st.success(f"✅ Preference for '{name}' submitted/updated successfully!")
                     st.balloons()
-                    # Consider st.rerun() if immediate reflection is needed elsewhere
 
 def display_oasis_preference_form(pool):
-    st.header("🌿 Reserve Oasis Seat (Individual)")
+    st.header("🌿 Reserve Oasis Seat (Individual)") # Kept new heading
     st.caption(f"Submit between Wednesday 09:00 - Friday 16:00 for the upcoming week. Current office time: {datetime.now(OFFICE_TIMEZONE).strftime('%A %H:%M')}")
     with st.form("oasis_form"):
         person = st.text_input("Your Name")
@@ -467,16 +460,16 @@ def display_oasis_preference_form(pool):
 
 
 def display_project_room_allocations(pool, current_monday):
-    st.header("📌 Project Room Allocations")
+    st.header("📌 Project Room Allocations") # Kept new heading
     alloc_df = get_room_grid_data(pool, current_monday)
-    if alloc_df.empty or "Room" not in alloc_df.columns: # Check if "Room" column exists
+    if alloc_df.empty or "Room" not in alloc_df.columns: 
         st.write("No project room allocations yet for this week, or data is malformed.")
     else:
         st.dataframe(alloc_df.set_index("Room"), use_container_width=True)
 
 
 def display_add_to_oasis_form(pool, current_monday, oasis_capacity_val):
-    st.header("🚶 Add Yourself to Oasis (Direct - if space available)")
+    st.header("🚶 Add Yourself to Oasis (Direct - if space available)") # Kept new heading
     st.caption("Use this if you missed the preference deadline. Availability is not guaranteed.")
     with st.form("oasis_add_form"):
         user_name = st.text_input("Your Name")
@@ -495,7 +488,6 @@ def display_add_to_oasis_form(pool, current_monday, oasis_capacity_val):
                             days_added_count = 0
                             for day_str in selected_days_add:
                                 date_obj = current_monday + timedelta(days=DAYS_OF_WEEK.index(day_str))
-                                # Check if already added for this day to prevent duplicates from this form
                                 cur.execute(
                                     "SELECT 1 FROM weekly_allocations WHERE room_name = %s AND team_name = %s AND date = %s",
                                     (OASIS_ROOM_NAME, name_clean, date_obj)
@@ -521,7 +513,7 @@ def display_add_to_oasis_form(pool, current_monday, oasis_capacity_val):
                             conn.commit()
                             if days_added_count > 0 : st.success(f"✅ '{name_clean}' processed for selected day(s) in Oasis!")
                             if not all_successful and selected_days_add : st.info("Partial success due to capacity. See warnings above.")
-                            elif not selected_days_add and not user_name.strip() : pass # No action if no days/name
+                            elif not selected_days_add and not user_name.strip() : pass 
                             else: st.info("Processing complete for Oasis direct add.")
                             st.rerun()
                 except Exception as e:
@@ -529,7 +521,8 @@ def display_add_to_oasis_form(pool, current_monday, oasis_capacity_val):
 
 
 def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
-    st.header("📊 Full Weekly Oasis Overview & Manual Edit")
+    # Kept new H3 heading
+    st.header("📊 Full Weekly Oasis Overview & Manual Edit") 
     
     NIEK_USER = "Niek" 
 
@@ -541,7 +534,6 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
 
         df_alloc = pd.DataFrame(rows, columns=["Name", "Date"]) if rows else pd.DataFrame(columns=["Name", "Date"])
         
-        # Ensure all names are strings before processing
         if not df_alloc.empty:
             df_alloc["Name"] = df_alloc["Name"].astype(str)
             df_alloc["Date"] = pd.to_datetime(df_alloc["Date"]).dt.date
@@ -553,26 +545,17 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
         matrix_df = pd.DataFrame(False, index=unique_names, columns=DAYS_OF_WEEK)
 
         for _, row in df_alloc.iterrows():
-            if row["Date"] in day_dates: # row["Date"] is datetime.date
+            if row["Date"] in day_dates: 
                 day_name_idx = day_dates.index(row["Date"])
                 day_name = DAYS_OF_WEEK[day_name_idx]
-                # row["Name"] is already string here
-                if row["Name"] in matrix_df.index: # matrix_df.index are strings
+                if row["Name"] in matrix_df.index: 
                      matrix_df.at[row["Name"], day_name] = True
         
-        if NIEK_USER in matrix_df.index: # NIEK_USER is string
+        if NIEK_USER in matrix_df.index: 
             matrix_df.loc[NIEK_USER, :] = True 
 
-        st.subheader("🪑 Oasis Availability Summary")
-        cols_avail = st.columns(len(DAYS_OF_WEEK))
-        for idx, day_name in enumerate(DAYS_OF_WEEK):
-            current_date_for_summary = day_dates[idx]
-            # Filter df_alloc for current day; Name column is string
-            signed_up_count = df_alloc[df_alloc["Date"] == current_date_for_summary].shape[0]
-            spots_left = max(0, oasis_capacity_val - signed_up_count)
-            cols_avail[idx].metric(label=day_name, value=f"{spots_left} spots")
-
-        st.subheader("✍️ Edit Oasis Roster")
+        # Removed the st.subheader("✍️ Edit Oasis Roster") as it's implied by the main header now.
+        # Directly display the editable matrix - closer to the "old" direct style.
         edited_matrix = st.data_editor(
             matrix_df,
             use_container_width=True,
@@ -584,12 +567,9 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
             try:
                 with manage_db_connection(pool) as conn_save:
                     with conn_save.cursor() as cur_save:
-                        # Clear existing Oasis allocations for the week, except Niek's if he's managed specially
                         cur_save.execute("DELETE FROM weekly_allocations WHERE room_name = %s AND team_name != %s", (OASIS_ROOM_NAME, str(NIEK_USER)))
-                        # Or if Niek is also managed by this matrix (and team_name!=NIEK_USER is removed):
-                        # cur_save.execute("DELETE FROM weekly_allocations WHERE room_name = %s", (OASIS_ROOM_NAME,))
-
-                        if str(NIEK_USER) in edited_matrix.index: # NIEK_USER is string
+                        
+                        if str(NIEK_USER) in edited_matrix.index: 
                              for day_idx_niek, day_name_niek in enumerate(DAYS_OF_WEEK):
                                 if edited_matrix.at[str(NIEK_USER), day_name_niek]: 
                                     date_obj_niek = current_monday + timedelta(days=day_idx_niek)
@@ -598,7 +578,6 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
                                         (str(NIEK_USER), OASIS_ROOM_NAME, date_obj_niek)
                                     )
                         
-                        # Calculate initial daily_counts including Niek if he was just re-added
                         daily_counts = {}
                         for day_idx_count, day_name_count in enumerate(DAYS_OF_WEEK):
                             date_obj_count = current_monday + timedelta(days=day_idx_count)
@@ -607,7 +586,7 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
                             daily_counts[day_name_count] = current_db_count
                         
                         for person_name_iter, attendance_series in edited_matrix.iterrows():
-                            person_name_str = str(person_name_iter) # Ensure person_name is string
+                            person_name_str = str(person_name_iter) 
                             if person_name_str == str(NIEK_USER): continue 
 
                             for day_name_save, is_attending_save in attendance_series.items():
@@ -616,17 +595,15 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
                                     date_obj_save = current_monday + timedelta(days=day_idx_save)
                                     
                                     if daily_counts[day_name_save] < oasis_capacity_val:
-                                        # Check if this specific user for this day already exists from Niek's special insert
                                         cur_save.execute("SELECT 1 FROM weekly_allocations WHERE team_name = %s AND room_name = %s AND date = %s",
                                                          (person_name_str, OASIS_ROOM_NAME, date_obj_save))
-                                        if not cur_save.fetchone(): # Only insert if not already there
+                                        if not cur_save.fetchone(): 
                                             cur_save.execute(
                                                 "INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)",
                                                 (person_name_str, OASIS_ROOM_NAME, date_obj_save)
                                             )
                                             daily_counts[day_name_save] += 1
                                     else:
-                                        # Check if this person is already in DB for this day (e.g. was Niek and matrix kept him)
                                         cur_save.execute("SELECT 1 FROM weekly_allocations WHERE team_name = %s AND room_name = %s AND date = %s",
                                                          (person_name_str, OASIS_ROOM_NAME, date_obj_save))
                                         if not cur_save.fetchone():
@@ -636,6 +613,19 @@ def display_oasis_overview_matrix(pool, current_monday, oasis_capacity_val):
                 st.rerun()
             except Exception as e_save:
                 st.error(f"❌ Failed to save Oasis matrix: {e_save}")
+        
+        # Display availability summary below the matrix (less prominent)
+        st.markdown("---") # Visual separator
+        st.subheader("🪑 Oasis Availability Summary (Current)")
+        availability_texts = []
+        for idx, day_name in enumerate(DAYS_OF_WEEK):
+            current_date_for_summary = day_dates[idx]
+            # Re-fetch count from df_alloc which reflects current state before potential save
+            signed_up_count = df_alloc[df_alloc["Date"] == current_date_for_summary].shape[0]
+            spots_left = max(0, oasis_capacity_val - signed_up_count)
+            availability_texts.append(f"**{day_name}**: {spots_left} spots left")
+        st.markdown(", ".join(availability_texts))
+
 
     except Exception as e_load:
         st.error(f"❌ Error loading Oasis overview matrix: {e_load}")
@@ -658,7 +648,8 @@ def main():
     display_admin_panel(pool, OFFICE_TIMEZONE, current_monday_date)
     
     st.divider()
-    col1_forms, col2_allocs = st.columns(2) 
+    # The image shows two main columns for forms and allocations/overview
+    col1_forms, col2_allocs_overview = st.columns(2) 
 
     with col1_forms:
         display_team_preference_form(pool)
@@ -667,7 +658,7 @@ def main():
         st.divider()
         display_add_to_oasis_form(pool, current_monday_date, OASIS_CAPACITY)
 
-    with col2_allocs: 
+    with col2_allocs_overview: 
         display_project_room_allocations(pool, current_monday_date)
         st.divider()
         display_oasis_overview_matrix(pool, current_monday_date, OASIS_CAPACITY)
