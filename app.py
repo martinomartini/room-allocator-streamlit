@@ -343,13 +343,21 @@ if "submission_end_text" not in st.session_state:
 if "oasis_end_text" not in st.session_state:
     st.session_state["oasis_end_text"] = "Friday 6 June 16:00"
 
+# Default text for project submission description in the main info block
+PROJECT_SUBMISSION_DESCRIPTION_DEFAULT = (
+    "    - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. \n"
+    "      The allocations will be shared on **Thursday at 16:00**."
+)
+if "project_submission_description" not in st.session_state:
+    st.session_state["project_submission_description"] = PROJECT_SUBMISSION_DESCRIPTION_DEFAULT
+
 # -----------------------------------------------------
 # Streamlit App UI
 # -----------------------------------------------------
 st.title("📅 Weekly Room Allocator")
 
 st.info(
-    """
+    f"""
     💡 **How This Works:**
     
     - 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible. 
@@ -357,8 +365,7 @@ st.info(
     - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. 
       There are 16 places in the Oasis.
     - ❗ You may only submit **once**. If you need to change your input, contact an admin.
-    - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. 
-      The allocations will be shared on **Thursday at 16:00**.
+{st.session_state.project_submission_description}
     - 🌿 **Oasis preferences** can be submitted **from Wednesday 09:00 until Friday 16:00**, 
       and allocation will be done at **Friday 16:00**.
     - ✅ Allocations are refreshed **weekly** by an admin. 
@@ -393,17 +400,25 @@ with st.expander("🔐 Admin Controls"):
         st.success("✅ Access granted.")
 
         # Button to update date references in markdown
-        st.subheader("💼 Update Markdown Dates")
+        st.subheader("💼 Update Markdown Dates & Info Text")
         new_week_of_text = st.text_input("Week of (e.g., '9 June')", st.session_state["week_of_text"])
         new_sub_start_text = st.text_input("Submission start (e.g., 'Wednesday 4 June 09:00')", st.session_state["submission_start_text"])
         new_sub_end_text = st.text_input("Submission end (e.g., 'Thursday 5 June 16:00')", st.session_state["submission_end_text"])
         new_oasis_end_text = st.text_input("Oasis end (e.g., 'Friday 6 June 16:00')", st.session_state["oasis_end_text"])
-        if st.button("Update Date Text"):
+        
+        new_project_submission_description = st.text_area(
+            "Project Submission Description (in 'How This Works' section)", 
+            st.session_state["project_submission_description"]
+        )
+        
+        if st.button("Update Date Text & Info"):
             st.session_state["week_of_text"] = new_week_of_text
             st.session_state["submission_start_text"] = new_sub_start_text
             st.session_state["submission_end_text"] = new_sub_end_text
             st.session_state["oasis_end_text"] = new_oasis_end_text
-            st.success("Markdown date references updated!")
+            st.session_state["project_submission_description"] = new_project_submission_description
+            st.success("Markdown date references and info text updated!")
+            st.rerun() # Rerun to reflect changes immediately
 
         # 1) Project Room Admin
         st.subheader("🧠 Project Room Admin")
