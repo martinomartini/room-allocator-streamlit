@@ -316,6 +316,18 @@ def insert_oasis(pool, person, selected_days):
         return_connection(pool, conn)
 
 # -----------------------------------------------------
+# Helper to load/update default date text
+# -----------------------------------------------------
+if "week_of_text" not in st.session_state:
+    st.session_state["week_of_text"] = "9 June"
+if "submission_start_text" not in st.session_state:
+    st.session_state["submission_start_text"] = "Wednesday 4 June 09:00"
+if "submission_end_text" not in st.session_state:
+    st.session_state["submission_end_text"] = "Thursday 5 June 16:00"
+if "oasis_end_text" not in st.session_state:
+    st.session_state["oasis_end_text"] = "Friday 6 June 16:00"
+
+# -----------------------------------------------------
 # Streamlit App UI
 # -----------------------------------------------------
 st.title("📅 Weekly Room Allocator")
@@ -363,6 +375,19 @@ with st.expander("🔐 Admin Controls"):
 
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
+
+        # Button to update date references in markdown
+        st.subheader("💼 Update Markdown Dates")
+        new_week_of_text = st.text_input("Week of (e.g., '9 June')", st.session_state["week_of_text"])
+        new_sub_start_text = st.text_input("Submission start (e.g., 'Wednesday 4 June 09:00')", st.session_state["submission_start_text"])
+        new_sub_end_text = st.text_input("Submission end (e.g., 'Thursday 5 June 16:00')", st.session_state["submission_end_text"])
+        new_oasis_end_text = st.text_input("Oasis end (e.g., 'Friday 6 June 16:00')", st.session_state["oasis_end_text"])
+        if st.button("Update Date Text"):
+            st.session_state["week_of_text"] = new_week_of_text
+            st.session_state["submission_start_text"] = new_sub_start_text
+            st.session_state["submission_end_text"] = new_sub_end_text
+            st.session_state["oasis_end_text"] = new_oasis_end_text
+            st.success("Markdown date references updated!")
 
         # 1) Project Room Admin
         st.subheader("🧠 Project Room Admin")
@@ -575,11 +600,10 @@ with st.expander("🔐 Admin Controls"):
 # -----------------------------------------------------
 st.header("📝 Request Project Room")
 
-# Automatically adjusted date prompt
 st.markdown(
-    """
-    For teams of 3 or more. Submissions for the **week of 9 June** are open 
-    from **Wednesday 4 June 09:00** until **Thursday 5 June 16:00**.
+    f"""
+    For teams of 3 or more. Submissions for the **week of {st.session_state["week_of_text"]}** are open 
+    from **{st.session_state["submission_start_text"]}** until **{st.session_state["submission_end_text"]}**.
     """
 )
 
@@ -605,11 +629,12 @@ with st.form("team_form"):
 st.header("🌿 Reserve Oasis Seat")
 
 st.markdown(
-    """
-    Submit your personal preferences for the **week of 9 June**. 
-    Submissions open from **Wednesday 4 June 09:00** until **Friday 6 June 16:00**.
+    f"""
+    Submit your personal preferences for the **week of {st.session_state["week_of_text"]}**. 
+    Submissions open from **{st.session_state["submission_start_text"]}** until **{st.session_state["oasis_end_text"]}**.
     """
 )
+
 with st.form("oasis_form"):
     oasis_person_name = st.text_input("Your Name", key="oasis_person")
     oasis_selected_days = st.multiselect(
@@ -763,7 +788,7 @@ else:
 
         # Mark allocations in the matrix
         if not df_matrix.empty:
-            for idx, row_data in df_matrix.iterrows():
+            for _, row_data in df_matrix.iterrows():
                 person_name = row_data["Name"]
                 alloc_date = row_data["Date"]
                 if alloc_date in oasis_overview_days_dates:
