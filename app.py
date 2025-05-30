@@ -741,6 +741,7 @@ with st.form("oasis_add_form"):
 # Full Weekly Oasis Overview
 # -----------------------------------------------------
 st.header("📊 Full Weekly Oasis Overview")
+st.caption(f"For the week of {st.session_state['week_of_text']}")
 
 oasis_overview_monday = datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
 oasis_overview_days_dates = [oasis_overview_monday + timedelta(days=i) for i in range(5)]
@@ -769,8 +770,10 @@ else:
         if not df_matrix.empty:
             df_matrix["Date"] = pd.to_datetime(df_matrix["Date"]).dt.date
 
-        # Gather unique allocated names + any from preferences + "Niek"
+        # Gather unique allocated names
         unique_names_allocated = set(df_matrix["Name"]) if not df_matrix.empty else set()
+
+        # Also gather names from oasis_preferences if needed
         names_from_prefs = set()
         try:
             with conn_matrix.cursor() as cur:
@@ -780,13 +783,14 @@ else:
         except psycopg2.Error:
             st.warning("Could not fetch names from Oasis preferences for matrix display.")
 
+        # Include a placeholder person if needed (e.g., "Niek")
         all_relevant_names = sorted(list(unique_names_allocated.union(names_from_prefs).union({"Niek"})))
         if not all_relevant_names:
             all_relevant_names = ["Niek"]
 
         matrix_df = pd.DataFrame(False, index=all_relevant_names, columns=oasis_overview_day_names)
 
-        # Mark allocations in the matrix
+        # Mark existing allocations
         if not df_matrix.empty:
             for _, row_data in df_matrix.iterrows():
                 person_name = row_data["Name"]
@@ -796,7 +800,7 @@ else:
                     if person_name in matrix_df.index:
                         matrix_df.at[person_name, day_label] = True
 
-        # Ensure Niek is always "signed up"
+        # Ensure "Niek" is always allocated
         if "Niek" in matrix_df.index:
             for day_n in oasis_overview_day_names:
                 matrix_df.at["Niek", day_n] = True
@@ -809,7 +813,7 @@ else:
             spots_left = max(0, oasis_capacity - used_spots)
             st.markdown(f"**{day_str_label} ({day_dt.strftime('%b %d')})**: {spots_left} spot(s) left")
 
-        # Data Editor for manual matrix changes
+        # Editor for manual matrix changes
         edited_matrix = st.data_editor(
             matrix_df,
             use_container_width=True,
@@ -820,7 +824,7 @@ else:
         if st.button("💾 Save Oasis Matrix Changes"):
             try:
                 with conn_matrix.cursor() as cur:
-                    # Clear existing Oasis allocations for the current week (except Niek)
+                    # Remove existing Oasis allocations for current week (except Niek)
                     cur.execute(
                         """
                         DELETE FROM weekly_allocations 
@@ -832,7 +836,7 @@ else:
                         (oasis_overview_monday, oasis_overview_days_dates[-1])
                     )
 
-                    # Re-insert Niek if indicated
+                    # Re-insert Niek
                     if "Niek" in edited_matrix.index:
                         cur.execute(
                             """
@@ -857,7 +861,10 @@ else:
 
                     # Re-insert others
                     occupied_counts_per_day = {
-                        day_col: (1 if ("Niek" in edited_matrix.index and edited_matrix.at["Niek", day_col] == True) else 0)
+                        day_col: (
+                            1 if ("Niek" in edited_matrix.index and edited_matrix.at["Niek", day_col] == True)
+                            else 0
+                        )
                         for day_col in oasis_overview_day_names
                     }
 
