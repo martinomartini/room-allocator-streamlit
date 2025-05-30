@@ -168,7 +168,12 @@ def get_oasis_grid(pool):
         return_connection(pool, conn)
 
 def get_preferences(pool):
-    """Fetch project room preferences."""
+    """
+    Fetch project room preferences, including the timestamp of submission.
+
+    Returns a DataFrame with columns:
+    [Team, Contact, Size, Days, Submitted At]
+    """
     if not pool:
         return pd.DataFrame()
 
@@ -178,9 +183,16 @@ def get_preferences(pool):
 
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT team_name, contact_person, team_size, preferred_days FROM weekly_preferences")
+            cur.execute("""
+                SELECT team_name, contact_person, team_size, preferred_days, submission_time
+                FROM weekly_preferences
+                ORDER BY submission_time DESC
+            """)
             rows = cur.fetchall()
-            return pd.DataFrame(rows, columns=["Team", "Contact", "Size", "Days"])
+            return pd.DataFrame(
+                rows,
+                columns=["Team", "Contact", "Size", "Days", "Submitted At"]
+            )
     except Exception as e:
         st.warning(f"Failed to fetch preferences: {e}")
         return pd.DataFrame()
@@ -202,9 +214,13 @@ def get_oasis_preferences(pool):
                 SELECT person_name, preferred_day_1, preferred_day_2,
                        preferred_day_3, preferred_day_4, preferred_day_5, submission_time
                 FROM oasis_preferences
+                ORDER BY submission_time DESC
             """)
             rows = cur.fetchall()
-            return pd.DataFrame(rows, columns=["Person", "Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Submitted At"])
+            return pd.DataFrame(
+                rows,
+                columns=["Person", "Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Submitted At"]
+            )
     except Exception as e:
         st.warning(f"Failed to fetch oasis preferences: {e}")
         return pd.DataFrame()
@@ -535,12 +551,28 @@ with st.expander("🔐 Admin Controls"):
                             # Clear before re-inserting
                             cur.execute("DELETE FROM weekly_preferences")
                             for _, row in editable_team_df.iterrows():
+                                # If the 'Submitted At' column is missing or empty, fallback to now
+                                sub_time = row.get("Submitted At", datetime.now(pytz.utc))
+                                if pd.isna(sub_time) or sub_time is None:
+                                    sub_time = datetime.now(pytz.utc)
                                 cur.execute(
                                     """
-                                    INSERT INTO weekly_preferences (team_name, contact_person, team_size, preferred_days, submission_time)
-                                    VALUES (%s, %s, %s, %s, NOW() AT TIME ZONE 'UTC')
+                                    INSERT INTO weekly_preferences (
+                                        team_name,
+                                        contact_person,
+                                        team_size,
+                                        preferred_days,
+                                        submission_time
+                                    )
+                                    VALUES (%s, %s, %s, %s, %s)
                                     """,
-                                    (row["Team"], row["Contact"], int(row["Size"]), row["Days"])
+                                    (
+                                        row["Team"],
+                                        row["Contact"],
+                                        int(row["Size"]),
+                                        row["Days"],
+                                        sub_time
+                                    )
                                 )
                             conn_admin_tp.commit()
                             st.success("✅ Team preferences updated.")
@@ -573,10 +605,12 @@ with st.expander("🔐 Admin Controls"):
                                     INSERT INTO oasis_preferences (
                                         person_name, preferred_day_1, preferred_day_2,
                                         preferred_day_3, preferred_day_4, preferred_day_5, submission_time
-                                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                    )
+                                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                                     """,
                                     (
-                                        row["Person"], row.get("Day 1"), row.get("Day 2"),
+                                        row["Person"],
+                                        row.get("Day 1"), row.get("Day 2"),
                                         row.get("Day 3"), row.get("Day 4"), row.get("Day 5"),
                                         sub_time
                                     )
@@ -745,9 +779,6 @@ with st.form("oasis_add_form"):
 st.header("📊 Full Weekly Oasis Overview")
 st.caption(f"For the week of {st.session_state['week_of_text']}")
 
-# You can adjust this line if you want to always set a specific Monday,
-# such as June 2, 2025. For example:
-# oasis_overview_monday = datetime(2025, 6, 2, tzinfo=OFFICE_TIMEZONE).date()
 oasis_overview_monday = datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
 oasis_overview_days_dates = [oasis_overview_monday + timedelta(days=i) for i in range(5)]
 oasis_overview_day_names = [d.strftime("%A") for d in oasis_overview_days_dates]
