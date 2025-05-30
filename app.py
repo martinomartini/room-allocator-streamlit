@@ -792,7 +792,7 @@ with st.form("oasis_add_form"):
 # Full Weekly Oasis Overview
 # -----------------------------------------------------
 st.header("📊 Full Weekly Oasis Overview")
-st.caption(f"For the week of {st.session_state['project_allocations_markdown_content']}")
+st.caption(f"{st.session_state['project_allocations_markdown_content']}")
 
 oasis_overview_monday = datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
 oasis_overview_days_dates = [oasis_overview_monday + timedelta(days=i) for i in range(5)]
