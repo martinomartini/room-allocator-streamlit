@@ -66,13 +66,25 @@ pool = get_db_connection_pool()
 # -----------------------------------------------------
 # Database Utility Functions
 # -----------------------------------------------------
+from dateutil import parser
+
+def parse_fixed_monday():
+    """Parse fixed Monday from 'week_of_text' session state, e.g. '9 June' → 2025-06-09."""
+    try:
+        current_year = datetime.now(OFFICE_TIMEZONE).year
+        week_text = st.session_state.get("week_of_text", "9 June")
+        parsed_date = parser.parse(f"{week_text} {current_year}", dayfirst=True).date()
+        return parsed_date
+    except Exception as e:
+        st.warning(f"Could not parse fixed Monday from week_of_text: {e}")
+        return datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
+
 def get_room_grid(pool):
     """Fetch current week's allocations (non-Oasis) from the database and build a grid (DataFrame)."""
     if not pool:
         return pd.DataFrame()
 
-    today = datetime.now(OFFICE_TIMEZONE).date()
-    this_monday = today - timedelta(days=today.weekday())
+    this_monday = parse_fixed_monday()
     day_mapping = {
         this_monday + timedelta(days=0): "Monday",
         this_monday + timedelta(days=1): "Tuesday",
@@ -101,7 +113,6 @@ def get_room_grid(pool):
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # Fetch project room allocations
             cur.execute("""
                 SELECT team_name, room_name, date
                 FROM weekly_allocations
@@ -109,7 +120,6 @@ def get_room_grid(pool):
             """)
             allocations = cur.fetchall()
 
-            # Fetch team contact info
             cur.execute("""
                 SELECT team_name, contact_person
                 FROM weekly_preferences
@@ -134,6 +144,8 @@ def get_room_grid(pool):
         st.warning(f"Database error while getting room grid: {e}")
         return pd.DataFrame(grid.values())
     finally:
+        return_connection(pool, conn)
+
         return_connection(pool, conn)
 
 def get_oasis_grid(pool):
