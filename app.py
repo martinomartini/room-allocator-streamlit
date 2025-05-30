@@ -267,9 +267,9 @@ with st.expander("🔐 Admin Controls"):
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
         st.markdown(f"""
-        *   Project Rooms currently set to display week of: **{st.session_state.project_rooms_display_monday.strftime('%Y-%m-%d')}**
-        *   Oasis currently set to display week of: **{st.session_state.oasis_display_monday.strftime('%Y-%m-%d')}**
-        """)
+        # *   Project Rooms currently set to display week of: **{st.session_state.project_rooms_display_monday.strftime('%Y-%m-%d')}**
+        # *   Oasis currently set to display week of: **{st.session_state.oasis_display_monday.strftime('%Y-%m-%d')}**
+        # """)
 
         st.subheader("💼 Update Configurable Texts (for Submission Forms & General Info)")
         new_submission_week_of_text = st.text_input(
@@ -355,7 +355,7 @@ with st.expander("🔐 Admin Controls"):
         st.subheader("📌 Project Room Allocations (Admin Edit)")
         try:
             current_proj_display_mon = st.session_state.project_rooms_display_monday
-            st.markdown(f"*Editing project rooms for week: **{current_proj_display_mon.strftime('%Y-%m-%d')}***")
+            # st.markdown(f"*Editing project rooms for week: **{current_proj_display_mon.strftime('%Y-%m-%d')}***")
             alloc_df_admin = get_room_grid(pool, current_proj_display_mon)
             if not alloc_df_admin.empty:
                 editable_alloc_proj = st.data_editor(alloc_df_admin, num_rows="dynamic", use_container_width=True, key="edit_proj_allocations_data")
