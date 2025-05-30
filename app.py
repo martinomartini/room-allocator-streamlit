@@ -556,7 +556,7 @@ else:
 # -----------------------------------------------------
 st.header("🚶 Add Yourself to Oasis (Ad-hoc)")
 current_oasis_display_mon_adhoc = st.session_state.oasis_display_monday 
-st.caption(f"Use this if you missed preference submission. Adding for week of **{current_oasis_display_mon_adhoc.strftime('%d %B %Y')}**. Subject to availability.")
+st.caption(f"Use this if you missed preference submission. Subject to availability.")
 with st.form("oasis_add_form_main"):
     adhoc_oasis_name = st.text_input("Your Name", key="af_adhoc_name")
     adhoc_oasis_days = st.multiselect(
