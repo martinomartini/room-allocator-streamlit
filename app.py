@@ -64,26 +64,21 @@ if "project_rooms_display_monday" not in st.session_state:
 if "oasis_display_monday" not in st.session_state:
     st.session_state.oasis_display_monday = current_week_monday_init
 
-# UI texts for submission forms - usually aligned with the upcoming project room allocation cycle
-# These are updated when project room allocation runs.
 default_submission_week_of_text = st.session_state.project_rooms_display_monday.strftime("%-d %B")
-if "submission_week_of_text" not in st.session_state: # Text for forms like "Submit for week of..."
+if "submission_week_of_text" not in st.session_state: 
     st.session_state["submission_week_of_text"] = default_submission_week_of_text
 
-# General configurable texts (can be overridden by admin)
 if "submission_start_text" not in st.session_state:
-    st.session_state["submission_start_text"] = "Wednesday 4 June 09:00" # Example
+    st.session_state["submission_start_text"] = "Wednesday 4 June 09:00" 
 if "submission_end_text" not in st.session_state:
-    st.session_state["submission_end_text"] = "Thursday 5 June 16:00" # Example
+    st.session_state["submission_end_text"] = "Thursday 5 June 16:00" 
 if "oasis_end_text" not in st.session_state:
-    st.session_state["oasis_end_text"] = "Friday 6 June 16:00" # Example
+    st.session_state["oasis_end_text"] = "Friday 6 June 16:00" 
 
-# Markdown for project room display section header
 default_project_alloc_markdown = f"Displaying project rooms for the week of {st.session_state.project_rooms_display_monday.strftime('%-d %B %Y')}."
 if "project_allocations_display_markdown_content" not in st.session_state:
     st.session_state["project_allocations_display_markdown_content"] = default_project_alloc_markdown
 
-# Markdown for Oasis display section header
 default_oasis_alloc_markdown = f"Displaying Oasis for the week of {st.session_state.oasis_display_monday.strftime('%-d %B %Y')}."
 if "oasis_allocations_display_markdown_content" not in st.session_state:
     st.session_state["oasis_allocations_display_markdown_content"] = default_oasis_alloc_markdown
@@ -110,13 +105,13 @@ def get_room_grid(pool, display_monday: date):
     if not conn: return pd.DataFrame(grid.values())
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            start_date, end_date = this_monday, this_monday + timedelta(days=3) # Mon-Thu for project rooms
+            start_date, end_date = this_monday, this_monday + timedelta(days=3) 
             cur.execute("""
                 SELECT team_name, room_name, date FROM weekly_allocations
                 WHERE room_name != 'Oasis' AND date >= %s AND date <= %s
             """, (start_date, end_date))
             allocations = cur.fetchall()
-            cur.execute("SELECT team_name, contact_person FROM weekly_preferences") # Assuming contacts are general
+            cur.execute("SELECT team_name, contact_person FROM weekly_preferences") 
             contacts = {row["team_name"]: row["contact_person"] for row in cur.fetchall()}
         for row in allocations:
             team, room, date_val = row["team_name"], row["room_name"], row["date"]
@@ -166,7 +161,7 @@ def insert_preference(pool, team, contact, size, days):
     if not team or not contact:
         st.error("❌ Team Name and Contact Person are required.")
         return False
-    if not 3 <= size <= 6: # Assuming team size limits
+    if not 3 <= size <= 6: 
         st.error("❌ Team size must be between 3 and 6.")
         return False
     conn = get_connection(pool)
@@ -371,10 +366,10 @@ with st.expander("🔐 Admin Controls"):
                         try:
                             with conn_admin_alloc.cursor() as cur:
                                 week_start_date = current_proj_display_mon
-                                week_end_date = current_proj_display_mon + timedelta(days=3) # Mon-Thu
+                                week_end_date = current_proj_display_mon + timedelta(days=3) 
                                 cur.execute("DELETE FROM weekly_allocations WHERE room_name != 'Oasis' AND date >= %s AND date <= %s", (week_start_date, week_end_date))
                                 day_indices = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3}
-                                for _, row in editable_alloc_proj.iterrows(): # Use the correct variable name
+                                for _, row in editable_alloc_proj.iterrows(): 
                                     for day_name, day_idx in day_indices.items():
                                         value = row.get(day_name, "")
                                         if value and value != "Vacant":
@@ -670,7 +665,8 @@ else:
         for day_dt, day_str_label in zip(oasis_overview_days_dates, oasis_overview_day_names):
             used_spots = current_day_alloc_counts[day_dt]
             spots_left = max(0, oasis_capacity - used_spots)
-            st.markdown(f"**{day_str_label} ({day_dt.strftime('%d %b')})**: {spots_left} spot(s) left")
+            # THIS IS THE CHANGED LINE:
+            st.markdown(f"**{day_str_label}**: {spots_left} spot(s) left")
 
         edited_matrix = st.data_editor(
             initial_matrix_df, 
