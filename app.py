@@ -15,7 +15,7 @@ from allocate_rooms import run_allocation  # Assuming this file exists and is co
 st.set_page_config(page_title="Weekly Room Allocator", layout="wide")
 if "fixed_monday" not in st.session_state:
     # Set this to the correct Monday date for your allocation week
-    st.session_state["fixed_monday"] = datetime(2025, 6, 9).date()
+    st.session_state["fixed_monday"] = datetime(2025, 5, 4).date()
 
 DATABASE_URL = st.secrets.get("SUPABASE_DB_URI", os.environ.get("SUPABASE_DB_URI"))
 OFFICE_TIMEZONE_STR = st.secrets.get("OFFICE_TIMEZONE", os.environ.get("OFFICE_TIMEZONE", "UTC"))
