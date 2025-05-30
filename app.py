@@ -266,10 +266,6 @@ with st.expander("🔐 Admin Controls"):
 
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
-        st.markdown(f"""
-        # *   Project Rooms currently set to display week of: **{st.session_state.project_rooms_display_monday.strftime('%Y-%m-%d')}**
-        # *   Oasis currently set to display week of: **{st.session_state.oasis_display_monday.strftime('%Y-%m-%d')}**
-        # """)
 
         st.subheader("💼 Update Configurable Texts (for Submission Forms & General Info)")
         new_submission_week_of_text = st.text_input(
