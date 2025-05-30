@@ -81,21 +81,33 @@ def run_allocation(database_url, only=None):
                 remaining = []
 
                 for team_name, team_size, _ in group:
-                    available_rooms = [
+                    # Filter rooms that fit the team size
+                    possible_rooms = [
                         r for r in project_rooms
                         if r["name"] not in used_rooms[d1]
                         and r["name"] not in used_rooms[d2]
                         and r["capacity"] >= team_size
                     ]
-                    random.shuffle(available_rooms)
+                    # Sort by capacity descending, shuffle ties
+                    capacity_buckets = {}
+                    for r in possible_rooms:
+                        capacity_buckets.setdefault(r["capacity"], []).append(r)
+                    sorted_caps = sorted(capacity_buckets.keys(), reverse=True)
+
+                    available_rooms = []
+                    for c in sorted_caps:
+                        # Shuffle each bucket so we pick a random room among ties
+                        random.shuffle(capacity_buckets[c])
+                        available_rooms.extend(capacity_buckets[c])
+
                     if available_rooms:
                         chosen_room = available_rooms[0]["name"]
                         cur.execute("""
-                            INSERT INTO weekly_allocations (team_name, room_name, date) 
+                            INSERT INTO weekly_allocations (team_name, room_name, date)
                             VALUES (%s, %s, %s)
                         """, (team_name, chosen_room, d1))
                         cur.execute("""
-                            INSERT INTO weekly_allocations (team_name, room_name, date) 
+                            INSERT INTO weekly_allocations (team_name, room_name, date)
                             VALUES (%s, %s, %s)
                         """, (team_name, chosen_room, d2))
                         used_rooms[d1].append(chosen_room)
@@ -103,6 +115,7 @@ def run_allocation(database_url, only=None):
                         team_to_days[team_name] = [d1, d2]
                     else:
                         remaining.append((team_name, team_size, _))
+
                 return remaining
 
             unplaced_teams += assign_combo(mon_wed, "Monday", "Wednesday")
