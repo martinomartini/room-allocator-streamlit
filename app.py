@@ -13,6 +13,9 @@ from allocate_rooms import run_allocation  # Assuming this file exists and is co
 # Configuration and Global Constants
 # -----------------------------------------------------
 st.set_page_config(page_title="Weekly Room Allocator", layout="wide")
+if "fixed_monday" not in st.session_state:
+    # Set this to the correct Monday date for your allocation week
+    st.session_state["fixed_monday"] = datetime(2025, 6, 9).date()
 
 DATABASE_URL = st.secrets.get("SUPABASE_DB_URI", os.environ.get("SUPABASE_DB_URI"))
 OFFICE_TIMEZONE_STR = st.secrets.get("OFFICE_TIMEZONE", os.environ.get("OFFICE_TIMEZONE", "UTC"))
@@ -66,25 +69,13 @@ pool = get_db_connection_pool()
 # -----------------------------------------------------
 # Database Utility Functions
 # -----------------------------------------------------
-from dateutil import parser
-
-def parse_fixed_monday():
-    """Parse fixed Monday from 'week_of_text' session state, e.g. '9 June' → 2025-06-09."""
-    try:
-        current_year = datetime.now(OFFICE_TIMEZONE).year
-        week_text = st.session_state.get("week_of_text", "9 June")
-        parsed_date = parser.parse(f"{week_text} {current_year}", dayfirst=True).date()
-        return parsed_date
-    except Exception as e:
-        st.warning(f"Could not parse fixed Monday from week_of_text: {e}")
-        return datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
-
 def get_room_grid(pool):
     """Fetch current week's allocations (non-Oasis) from the database and build a grid (DataFrame)."""
     if not pool:
         return pd.DataFrame()
 
-    this_monday = parse_fixed_monday()
+    # today = datetime.now(OFFICE_TIMEZONE).date()
+    this_monday = st.session_state["fixed_monday"]  # Use fixed Monday from session state
     day_mapping = {
         this_monday + timedelta(days=0): "Monday",
         this_monday + timedelta(days=1): "Tuesday",
@@ -93,7 +84,7 @@ def get_room_grid(pool):
     }
     day_labels = list(day_mapping.values())
 
-    # Load room names from file (excluding Oasis)
+    # Fetch all room names from rooms.json (excluding Oasis)
     try:
         with open(ROOMS_FILE) as f:
             all_rooms = [r["name"] for r in json.load(f) if r["name"] != "Oasis"]
@@ -101,7 +92,7 @@ def get_room_grid(pool):
         st.error(f"Error: Could not load valid data from {ROOMS_FILE}.")
         return pd.DataFrame()
 
-    # Initialize empty room grid
+    # Initialize every room as "Vacant" for each day
     grid = {
         room: {**{"Room": room}, **{day: "Vacant" for day in day_labels}}
         for room in all_rooms
@@ -109,10 +100,11 @@ def get_room_grid(pool):
 
     conn = get_connection(pool)
     if not conn:
-        return pd.DataFrame(grid.values())
+        return pd.DataFrame(grid.values())  # Return empty grid if no connection
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # Fetch project room allocations
             cur.execute("""
                 SELECT team_name, room_name, date
                 FROM weekly_allocations
@@ -120,13 +112,14 @@ def get_room_grid(pool):
             """)
             allocations = cur.fetchall()
 
+            # Fetch team contact info
             cur.execute("""
                 SELECT team_name, contact_person
                 FROM weekly_preferences
             """)
             contacts = {row["team_name"]: row["contact_person"] for row in cur.fetchall()}
 
-        # Fill grid with actual allocation data
+        # Fill the grid with allocated data
         for row in allocations:
             team = row["team_name"]
             room = row["room_name"]
@@ -143,15 +136,8 @@ def get_room_grid(pool):
     except psycopg2.Error as e:
         st.warning(f"Database error while getting room grid: {e}")
         return pd.DataFrame(grid.values())
-
     finally:
-        try:
-            if conn:
-                return_connection(pool, conn)
-        except psycopg2.pool.PoolError:
-            pass  # Avoid crashing if connection was unkeyed or invalid
-
-
+        return_connection(pool, conn)
 
 def get_oasis_grid(pool):
     """Fetch Oasis allocations for the current week."""
