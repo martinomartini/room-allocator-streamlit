@@ -743,6 +743,11 @@ with st.form("oasis_add_form"):
 st.header("📊 Full Weekly Oasis Overview")
 st.caption(f"For the week of {st.session_state['week_of_text']}")
 
+# You can adjust this line if you want to always set a specific Monday,
+# such as June 2, 2025. For example:
+# example:
+# oasis_overview_monday = datetime(2025, 6, 2, tzinfo=OFFICE_TIMEZONE).date()
+
 oasis_overview_monday = datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
 oasis_overview_days_dates = [oasis_overview_monday + timedelta(days=i) for i in range(5)]
 oasis_overview_day_names = [d.strftime("%A") for d in oasis_overview_days_dates]
