@@ -560,7 +560,7 @@ st.caption(f"Use this if you missed preference submission. Subject to availabili
 with st.form("oasis_add_form_main"):
     adhoc_oasis_name = st.text_input("Your Name", key="af_adhoc_name")
     adhoc_oasis_days = st.multiselect(
-        f"Select day(s) for week of {current_oasis_display_mon_adhoc.strftime('%d %B')}:",
+        f"Select day(s):",
         ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"],
         key="af_adhoc_days"
     )
