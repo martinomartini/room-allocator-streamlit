@@ -745,9 +745,7 @@ st.caption(f"For the week of {st.session_state['week_of_text']}")
 
 # You can adjust this line if you want to always set a specific Monday,
 # such as June 2, 2025. For example:
-# example:
 # oasis_overview_monday = datetime(2025, 6, 2, tzinfo=OFFICE_TIMEZONE).date()
-
 oasis_overview_monday = datetime.now(OFFICE_TIMEZONE).date() - timedelta(days=datetime.now(OFFICE_TIMEZONE).weekday())
 oasis_overview_days_dates = [oasis_overview_monday + timedelta(days=i) for i in range(5)]
 oasis_overview_day_names = [d.strftime("%A") for d in oasis_overview_days_dates]
@@ -816,7 +814,7 @@ else:
             current_day_allocations = df_matrix[df_matrix["Date"] == day_dt]["Name"].tolist() if not df_matrix.empty else []
             used_spots = len(set(current_day_allocations))
             spots_left = max(0, oasis_capacity - used_spots)
-            st.markdown(f"**{day_str_label} ({day_dt.strftime('%b %d')})**: {spots_left} spot(s) left")
+            st.markdown(f"**{day_str_label}**: {spots_left} spot(s) left")
 
         # Editor for manual matrix changes
         edited_matrix = st.data_editor(
