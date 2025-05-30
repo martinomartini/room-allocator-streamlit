@@ -120,8 +120,8 @@ def get_room_grid(pool):
         for row in allocations:
             team = row["team_name"]
             room = row["room_name"]
-            date = row["date"]
-            day = day_mapping.get(date)
+            date_val = row["date"]
+            day = day_mapping.get(date_val)
             if room not in grid or not day:
                 continue
             contact = contacts.get(team)
@@ -343,13 +343,12 @@ if "submission_end_text" not in st.session_state:
 if "oasis_end_text" not in st.session_state:
     st.session_state["oasis_end_text"] = "Friday 6 June 16:00"
 
-# Default text for project submission description in the main info block
-PROJECT_SUBMISSION_DESCRIPTION_DEFAULT = (
-    "    - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. \n"
-    "      The allocations will be shared on **Thursday at 16:00**."
-)
-if "project_submission_description" not in st.session_state:
-    st.session_state["project_submission_description"] = PROJECT_SUBMISSION_DESCRIPTION_DEFAULT
+# Initialize the markdown content for project allocations display
+# This ensures it's set on first run, based on the initial week_of_text.
+# If an admin later changes week_of_text, they might need to manually update this field too
+# if they want it to reflect the new week_of_text.
+if "project_allocations_markdown_content" not in st.session_state:
+    st.session_state["project_allocations_markdown_content"] = f"For the week of {st.session_state['week_of_text']}."
 
 # -----------------------------------------------------
 # Streamlit App UI
@@ -357,7 +356,7 @@ if "project_submission_description" not in st.session_state:
 st.title("📅 Weekly Room Allocator")
 
 st.info(
-    f"""
+    """
     💡 **How This Works:**
     
     - 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible. 
@@ -365,7 +364,8 @@ st.info(
     - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. 
       There are 16 places in the Oasis.
     - ❗ You may only submit **once**. If you need to change your input, contact an admin.
-{st.session_state.project_submission_description}
+    - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. 
+      The allocations will be shared on **Thursday at 16:00**.
     - 🌿 **Oasis preferences** can be submitted **from Wednesday 09:00 until Friday 16:00**, 
       and allocation will be done at **Friday 16:00**.
     - ✅ Allocations are refreshed **weekly** by an admin. 
@@ -399,26 +399,26 @@ with st.expander("🔐 Admin Controls"):
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
 
-        # Button to update date references in markdown
-        st.subheader("💼 Update Markdown Dates & Info Text")
+        st.subheader("💼 Update Configurable Texts")
         new_week_of_text = st.text_input("Week of (e.g., '9 June')", st.session_state["week_of_text"])
         new_sub_start_text = st.text_input("Submission start (e.g., 'Wednesday 4 June 09:00')", st.session_state["submission_start_text"])
         new_sub_end_text = st.text_input("Submission end (e.g., 'Thursday 5 June 16:00')", st.session_state["submission_end_text"])
         new_oasis_end_text = st.text_input("Oasis end (e.g., 'Friday 6 June 16:00')", st.session_state["oasis_end_text"])
         
-        new_project_submission_description = st.text_area(
-            "Project Submission Description (in 'How This Works' section)", 
-            st.session_state["project_submission_description"]
+        new_project_alloc_markdown_content = st.text_input(
+            "Text for 'Project Room Allocations' section (below header)", 
+            st.session_state["project_allocations_markdown_content"],
+            key="proj_alloc_subheader_text" 
         )
         
-        if st.button("Update Date Text & Info"):
+        if st.button("Update Configurable Texts"):
             st.session_state["week_of_text"] = new_week_of_text
             st.session_state["submission_start_text"] = new_sub_start_text
             st.session_state["submission_end_text"] = new_sub_end_text
             st.session_state["oasis_end_text"] = new_oasis_end_text
-            st.session_state["project_submission_description"] = new_project_submission_description
-            st.success("Markdown date references and info text updated!")
-            st.rerun() # Rerun to reflect changes immediately
+            st.session_state["project_allocations_markdown_content"] = new_project_alloc_markdown_content
+            st.success("Configurable texts updated!")
+            st.rerun()
 
         # 1) Project Room Admin
         st.subheader("🧠 Project Room Admin")
@@ -470,15 +470,15 @@ with st.expander("🔐 Admin Controls"):
                                         value = row.get(day_name, "")
                                         if value and value != "Vacant":
                                             team_info = str(value).split("(")[0].strip()
-                                            room_name = str(row["Room"]) if pd.notnull(row["Room"]) else None
+                                            room_name_val = str(row["Room"]) if pd.notnull(row["Room"]) else None
                                             alloc_date = this_monday_admin + timedelta(days=day_idx)
-                                            if team_info and room_name:
+                                            if team_info and room_name_val:
                                                 cur.execute(
                                                     """
                                                     INSERT INTO weekly_allocations (team_name, room_name, date)
                                                     VALUES (%s, %s, %s)
                                                     """,
-                                                    (team_info, room_name, alloc_date)
+                                                    (team_info, room_name_val, alloc_date)
                                                 )
                             conn_admin_alloc.commit()
                             st.success("✅ Manual project room allocations updated.")
@@ -702,7 +702,7 @@ with st.form("oasis_form"):
 # Display: Project Room Allocations
 # -----------------------------------------------------
 st.header("📌 Project Room Allocations")
-st.markdown(f"For the week of {st.session_state['week_of_text']}.")
+st.markdown(st.session_state['project_allocations_markdown_content']) # Use the new session state variable
 
 alloc_display_df = get_room_grid(pool)
 if alloc_display_df.empty:
@@ -837,7 +837,7 @@ else:
         # Include a placeholder person if needed (e.g., "Niek")
         all_relevant_names = sorted(list(unique_names_allocated.union(names_from_prefs).union({"Niek"})))
         if not all_relevant_names:
-            all_relevant_names = ["Niek"]
+            all_relevant_names = ["Niek"] # Default to Niek if no one else is found
 
         matrix_df = pd.DataFrame(False, index=all_relevant_names, columns=oasis_overview_day_names)
 
@@ -846,61 +846,60 @@ else:
             for _, row_data in df_matrix.iterrows():
                 person_name = row_data["Name"]
                 alloc_date = row_data["Date"]
-                if alloc_date in oasis_overview_days_dates:
+                if alloc_date in oasis_overview_days_dates: # Ensure date is within the current week
                     day_label = alloc_date.strftime("%A")
-                    if person_name in matrix_df.index:
+                    if person_name in matrix_df.index: # Check if person is in the matrix
                         matrix_df.at[person_name, day_label] = True
 
-        # Ensure "Niek" is always allocated
+
+        # Ensure "Niek" is always allocated if Niek is in the index
         if "Niek" in matrix_df.index:
             for day_n in oasis_overview_day_names:
                 matrix_df.at["Niek", day_n] = True
-
+        
         # Oasis Availability Summary
         st.subheader("🪑 Oasis Availability Summary")
         for day_dt, day_str_label in zip(oasis_overview_days_dates, oasis_overview_day_names):
             current_day_allocations = df_matrix[df_matrix["Date"] == day_dt]["Name"].tolist() if not df_matrix.empty else []
-            used_spots = len(set(current_day_allocations))
+            used_spots = len(set(current_day_allocations)) # Count unique names for the day
             spots_left = max(0, oasis_capacity - used_spots)
             st.markdown(f"**{day_str_label}**: {spots_left} spot(s) left")
+
 
         # Editor for manual matrix changes
         edited_matrix = st.data_editor(
             matrix_df,
             use_container_width=True,
-            disabled=["Niek"] if "Niek" in matrix_df.index else [],
+            disabled=["Niek"] if "Niek" in matrix_df.index else [], # Disable Niek's row if Niek exists
             key="oasis_matrix_editor"
         )
 
         if st.button("💾 Save Oasis Matrix Changes"):
             try:
                 with conn_matrix.cursor() as cur:
-                    # Remove existing Oasis allocations for current week (except Niek)
+                    # Remove existing Oasis allocations for current week (except Niek, handled separately if Niek is special)
                     cur.execute(
                         """
                         DELETE FROM weekly_allocations 
                         WHERE room_name = 'Oasis' 
-                          AND team_name != 'Niek'
+                          AND team_name != 'Niek'  -- Assuming Niek has special handling or is always present
                           AND date >= %s 
                           AND date <= %s
                         """,
                         (oasis_overview_monday, oasis_overview_days_dates[-1])
                     )
 
-                    # Re-insert Niek
+                    # Re-insert Niek based on the matrix state, ensuring Niek is handled first if capacity is a concern
                     if "Niek" in edited_matrix.index:
-                        cur.execute(
+                        cur.execute( # Clear Niek's specific entries first before re-adding
                             """
                             DELETE FROM weekly_allocations 
-                            WHERE room_name = 'Oasis' 
-                              AND team_name = 'Niek'
-                              AND date >= %s 
-                              AND date <= %s
+                            WHERE room_name = 'Oasis' AND team_name = 'Niek' AND date >= %s AND date <= %s
                             """,
                             (oasis_overview_monday, oasis_overview_days_dates[-1])
                         )
                         for day_idx, day_str_col in enumerate(oasis_overview_day_names):
-                            if edited_matrix.at["Niek", day_str_col]:
+                            if edited_matrix.at["Niek", day_str_col]: # If Niek is marked for this day
                                 date_obj_niek = oasis_overview_monday + timedelta(days=day_idx)
                                 cur.execute(
                                     """
@@ -909,21 +908,20 @@ else:
                                     """,
                                     ("Niek", "Oasis", date_obj_niek)
                                 )
-
-                    # Re-insert others
-                    occupied_counts_per_day = {
-                        day_col: (
-                            1 if ("Niek" in edited_matrix.index and edited_matrix.at["Niek", day_col] == True)
-                            else 0
-                        )
-                        for day_col in oasis_overview_day_names
-                    }
-
+                    
+                    # Calculate current occupied spots per day, considering Niek if present
+                    occupied_counts_per_day = {day_col: 0 for day_col in oasis_overview_day_names}
+                    if "Niek" in edited_matrix.index:
+                        for day_col in oasis_overview_day_names:
+                            if edited_matrix.at["Niek", day_col]:
+                                occupied_counts_per_day[day_col] +=1
+                                
+                    # Re-insert others from the edited matrix
                     for person_name_matrix in edited_matrix.index:
-                        if person_name_matrix == "Niek":
+                        if person_name_matrix == "Niek": # Skip Niek as already handled
                             continue
                         for day_idx, day_str_col in enumerate(oasis_overview_day_names):
-                            if edited_matrix.at[person_name_matrix, day_str_col]:
+                            if edited_matrix.at[person_name_matrix, day_str_col]: # If person is marked for this day
                                 if occupied_counts_per_day[day_str_col] < oasis_capacity:
                                     date_obj_alloc = oasis_overview_monday + timedelta(days=day_idx)
                                     cur.execute(
@@ -936,7 +934,7 @@ else:
                                     occupied_counts_per_day[day_str_col] += 1
                                 else:
                                     st.warning(f"⚠️ {person_name_matrix} could not be added to Oasis on {day_str_col}: capacity reached.")
-
+                                    
                     conn_matrix.commit()
                     st.success("✅ Oasis Matrix saved successfully!")
                     st.rerun()
