@@ -408,7 +408,7 @@ st.info(
 
 now_local = datetime.now(OFFICE_TIMEZONE)
 st.info(f"Current Office Time: **{now_local.strftime('%Y-%m-%d %H:%M:%S')}** ({OFFICE_TIMEZONE_STR})")
-st.info(f"Displaying allocations for the week of: **{st.session_state.active_display_monday.strftime('%A, %d %B %Y')}**")
+# st.info(f"Displaying allocations for the week of: **{st.session_state.active_display_monday.strftime('%A, %d %B %Y')}**")
 
 
 # ---------------- Admin Controls ---------------------
