@@ -93,7 +93,7 @@ def get_room_grid(pool):
     }
     day_labels = list(day_mapping.values())
 
-    # Fetch all room names from rooms.json (excluding Oasis)
+    # Load room names from file (excluding Oasis)
     try:
         with open(ROOMS_FILE) as f:
             all_rooms = [r["name"] for r in json.load(f) if r["name"] != "Oasis"]
@@ -101,7 +101,7 @@ def get_room_grid(pool):
         st.error(f"Error: Could not load valid data from {ROOMS_FILE}.")
         return pd.DataFrame()
 
-    # Initialize every room as "Vacant" for each day
+    # Initialize empty room grid
     grid = {
         room: {**{"Room": room}, **{day: "Vacant" for day in day_labels}}
         for room in all_rooms
@@ -109,7 +109,7 @@ def get_room_grid(pool):
 
     conn = get_connection(pool)
     if not conn:
-        return pd.DataFrame(grid.values())  # Return empty grid if no connection
+        return pd.DataFrame(grid.values())
 
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -126,7 +126,7 @@ def get_room_grid(pool):
             """)
             contacts = {row["team_name"]: row["contact_person"] for row in cur.fetchall()}
 
-        # Fill the grid with allocated data
+        # Fill grid with actual allocation data
         for row in allocations:
             team = row["team_name"]
             room = row["room_name"]
@@ -143,10 +143,15 @@ def get_room_grid(pool):
     except psycopg2.Error as e:
         st.warning(f"Database error while getting room grid: {e}")
         return pd.DataFrame(grid.values())
-    finally:
-        return_connection(pool, conn)
 
-        return_connection(pool, conn)
+    finally:
+        try:
+            if conn:
+                return_connection(pool, conn)
+        except psycopg2.pool.PoolError:
+            pass  # Avoid crashing if connection was unkeyed or invalid
+
+
 
 def get_oasis_grid(pool):
     """Fetch Oasis allocations for the current week."""
