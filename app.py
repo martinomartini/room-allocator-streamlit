@@ -653,6 +653,8 @@ with st.form("oasis_form"):
 # Display: Project Room Allocations
 # -----------------------------------------------------
 st.header("📌 Project Room Allocations")
+st.markdown(f"For the week of {st.session_state['week_of_text']}.")
+
 alloc_display_df = get_room_grid(pool)
 if alloc_display_df.empty:
     st.write("No project room allocations yet for the current week.")
