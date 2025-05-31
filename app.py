@@ -12,7 +12,7 @@ from allocate_rooms import run_allocation  # Assuming this file exists and is co
 # -----------------------------------------------------
 # Configuration and Global Constants
 # -----------------------------------------------------
-st.set_page_config(page_title="Weekly Room Allocator", layout="wide")
+st.set_page_config(page_title="Weekly Room Allocator - TS", layout="wide")
 
 DATABASE_URL = st.secrets.get("SUPABASE_DB_URI", os.environ.get("SUPABASE_DB_URI"))
 OFFICE_TIMEZONE_STR = st.secrets.get("OFFICE_TIMEZONE", os.environ.get("OFFICE_TIMEZONE", "UTC"))
