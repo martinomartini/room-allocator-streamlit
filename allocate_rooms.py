@@ -179,20 +179,31 @@ def run_allocation(database_url, only=None, base_monday_date=None):
             master_fallback_pool = unplaced_after_mon_wed_pass + unplaced_after_tue_thu_pass + teams_for_fallback_immediately
             random.shuffle(master_fallback_pool)
 
-            print(f"Fallback allocation needed for {len(master_fallback_pool)} teams")
-
+            print(f"Fallback allocation needed for {len(master_fallback_pool)} teams")            
             final_unplaced_project_teams = []
             sorted_fallback_teams = sorted(master_fallback_pool, key=lambda x: x[1], reverse=True)
+
+            # Define the only valid day pairs for project teams
+            valid_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]
 
             for team_name, team_size, original_pref_labels in sorted_fallback_teams:
                 if team_name in placed_teams_info:
                     continue
                 placed_in_fallback = False
-                project_work_days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-                possible_fallback_day_pairs = list(combinations(project_work_days, 2))
-                random.shuffle(possible_fallback_day_pairs)
+                
+                # Determine fallback preference order based on original preference
+                if original_pref_labels == ["Monday", "Wednesday"]:
+                    # If they preferred Mon/Wed, try Tue/Thu as fallback
+                    fallback_day_pairs = [("Tuesday", "Thursday"), ("Monday", "Wednesday")]
+                elif original_pref_labels == ["Tuesday", "Thursday"]:
+                    # If they preferred Tue/Thu, try Mon/Wed as fallback
+                    fallback_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]
+                else:
+                    # For other preferences, try both valid pairs randomly
+                    fallback_day_pairs = valid_day_pairs.copy()
+                    random.shuffle(fallback_day_pairs)
 
-                for fb_day1_label, fb_day2_label in possible_fallback_day_pairs:
+                for fb_day1_label, fb_day2_label in fallback_day_pairs:
                     fb_actual_date1 = day_mapping[fb_day1_label]
                     fb_actual_date2 = day_mapping[fb_day2_label]
                     possible_rooms_for_fallback = [
