@@ -610,6 +610,9 @@ with st.spinner("Loading analytics data..."):
     historical_oasis_daily, historical_oasis_avg = get_corrected_oasis_utilization(historical_df, weeks_back)
     oasis_daily_breakdown = get_oasis_daily_breakdown(pool, weeks_back)
 
+# Get UI week dates for debug comparisons
+ui_week_dates = get_ui_week_dates()
+
 # Debug section to show actual data vs UI comparison
 with st.expander("🐛 Debug: Raw Data Analysis", expanded=False):
     st.write("**Raw Current Week Oasis Data vs Analytics Calculation**")
