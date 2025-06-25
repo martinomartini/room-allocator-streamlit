@@ -736,8 +736,7 @@ with col1:
         st.info("No project room data available for the selected period.")
 
     with col2:
-        st.write("**Oasis Utilization**")
-        # Calculate historical Oasis utilization using the same logic as UI
+        st.write("**Oasis Utilization**")        # Calculate historical Oasis utilization using the same logic as UI
         historical_oasis = historical_df[historical_df['Room_Type'] == 'Oasis']
         if not historical_oasis.empty:
             # Count unique people per day (matches UI "used_spots" calculation)
@@ -745,7 +744,8 @@ with col1:
             historical_oasis_avg = (daily_unique_people.mean() / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
         else:
             historical_oasis_avg = 0
-              if historical_oasis_avg > 0:
+        
+        if historical_oasis_avg > 0:
             # Create a gauge-like visualization for Oasis using corrected calculation
             fig_oasis = go.Figure(go.Indicator(
                 mode = "gauge+number+delta",
