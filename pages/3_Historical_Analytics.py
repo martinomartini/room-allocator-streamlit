@@ -311,12 +311,18 @@ def get_daily_utilization(pool, weeks_back=8):
     return pd.DataFrame(daily_stats).sort_values('Date', ascending=False)
 
 def get_current_allocations(pool):
-    """Get current week allocation data from active table"""
+    """Get current week allocation data from active table - filtered to current week only like UI does"""
     if not pool: return pd.DataFrame()
     conn = get_connection(pool)
     if not conn: return pd.DataFrame()
     
     try:
+        # Calculate current week date range exactly like UI does
+        today = date.today()
+        days_since_monday = today.weekday()  # Monday = 0
+        monday_this_week = today - timedelta(days=days_since_monday)
+        friday_this_week = monday_this_week + timedelta(days=4)  # Friday
+        
         with conn.cursor() as cur:
             # Check if confirmed column exists
             cur.execute("""
@@ -325,6 +331,7 @@ def get_current_allocations(pool):
             """)
             has_confirmed_col = cur.fetchone() is not None
             
+            # IMPORTANT: Filter to current week only, exactly like UI does
             if has_confirmed_col:
                 cur.execute("""
                     SELECT team_name, room_name, date, 
@@ -333,8 +340,9 @@ def get_current_allocations(pool):
                            EXTRACT(YEAR FROM date) as year,
                            COALESCE(confirmed, FALSE) as confirmed
                     FROM weekly_allocations 
+                    WHERE date >= %s AND date <= %s
                     ORDER BY date DESC
-                """)
+                """, (monday_this_week, friday_this_week))
             else:
                 cur.execute("""
                     SELECT team_name, room_name, date, 
@@ -343,8 +351,9 @@ def get_current_allocations(pool):
                            EXTRACT(YEAR FROM date) as year,
                            TRUE as confirmed
                     FROM weekly_allocations 
+                    WHERE date >= %s AND date <= %s
                     ORDER BY date DESC
-                """)
+                """, (monday_this_week, friday_this_week))
             
             rows = cur.fetchall()
             if not rows:
@@ -437,24 +446,31 @@ def get_current_oasis_utilization(current_df):
     if current_df.empty:
         return pd.DataFrame(), 0.0
     
-    # Filter for Oasis allocations only
+    # Filter for Oasis allocations only - EXACTLY like UI does
     oasis_df = current_df[current_df['Room_Type'] == 'Oasis']
     
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
-    # NOTE: UI shows "spots left" based on ALL allocations (not just confirmed)
-    # To match UI behavior exactly, we replicate the UI logic:
-    # current_day_alloc_counts[day_dt_check] = df_matrix_data[df_matrix_data["Date"] == day_dt_check]["Name"].nunique()
+    # DEBUG: Print what we're working with
+    st.write(f"🔍 **DEBUG get_current_oasis_utilization**: Input has {len(current_df)} total records, {len(oasis_df)} Oasis records")
     
-    # Filter to only current week (most recent week in the data)
-    if not oasis_df.empty:
-        latest_week = oasis_df['WeekStart'].max()
-        oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
+    # IMPORTANT: The UI logic is simpler - it just counts unique people per day from the current week
+    # NO week filtering needed because current_df should already be the current week only
+    # The UI query is: SELECT team_name, date FROM weekly_allocations WHERE room_name = 'Oasis' AND date >= monday AND date <= last_day
     
-    # Replicate UI calculation exactly: count unique Team (people) per Date
+    st.write(f"🔍 **DEBUG**: Current week date range: {oasis_df['Date'].min()} to {oasis_df['Date'].max()}")
+    
+    # EXACT UI logic replication: count unique Team (Name in UI) per Date
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'Used_Spots']
+    
+    st.write(f"🔍 **DEBUG**: Groupby result: {len(daily_counts)} days")
+    if not daily_counts.empty:
+        st.write("🔍 **DEBUG**: Daily counts from analytics function:")
+        debug_display = daily_counts.copy()
+        debug_display['Date_Str'] = debug_display['Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(debug_display[['Date_Str', 'WeekDay', 'Used_Spots']], use_container_width=True, hide_index=True)
     
     # Calculate utilization: Used_Spots / OASIS_CAPACITY * 100 (matches UI logic)
     daily_counts['Utilization'] = (daily_counts['Used_Spots'] / OASIS_CAPACITY * 100).round(1)
@@ -496,15 +512,8 @@ def get_corrected_oasis_utilization(df, weeks_back=8):
     
     # Add spots_left column to show the UI value
     daily_counts['Spots_Left'] = OASIS_CAPACITY - daily_counts['Used_Spots']
-    
-    # Rename for consistency with other functions
+      # Rename for consistency with other functions
     daily_counts = daily_counts.rename(columns={'Used_Spots': 'People_Count'})
-    
-    # Calculate average utilization
-    avg_utilization = daily_counts['Utilization'].mean()
-    
-    return daily_counts, avg_utilization
-    daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
     
     # Calculate average utilization
     avg_utilization = daily_counts['Utilization'].mean()
@@ -1135,11 +1144,22 @@ else:
 st.subheader("🔍 DEBUG: Oasis Utilization Analysis")
 st.info("This section shows exactly how Oasis utilization is calculated to match the UI.")
 
+# Show the current week date range being used
+today = date.today()
+days_since_monday = today.weekday()
+monday_this_week = today - timedelta(days=days_since_monday)
+friday_this_week = monday_this_week + timedelta(days=4)
+st.write(f"**Current week date range**: {monday_this_week} to {friday_this_week} (same as UI)")
+
 if not current_df.empty:
     oasis_current_raw = current_df[current_df['Room_Type'] == 'Oasis']
     
+    # Initialize display_debug outside the nested if block to avoid scope issues
+    display_debug = pd.DataFrame()
+    
     if not oasis_current_raw.empty:
         st.write("**Current Week Oasis Raw Data:**")
+        st.write(f"**Date range in data**: {oasis_current_raw['Date'].min().strftime('%Y-%m-%d')} to {oasis_current_raw['Date'].max().strftime('%Y-%m-%d')}")
         st.dataframe(oasis_current_raw[['Team', 'Date', 'WeekDay', 'Confirmed']], use_container_width=True)
         
         # DEBUG: Check for duplicate records
@@ -1173,28 +1193,91 @@ if not current_df.empty:
         display_debug = daily_counts_debug[['Date', 'WeekDay', 'Used_Spots', 'Spots_Left', 'Utilization_Percent']].copy()
         display_debug['Date'] = display_debug['Date'].dt.strftime('%Y-%m-%d')
         st.dataframe(display_debug, use_container_width=True, hide_index=True)
-        
-        # Show the analytics calculation for comparison
+          # Show the analytics calculation for comparison
+        st.write("**Analytics Function Result vs Manual Calculation:**")
         current_oasis_daily_analytics, current_oasis_avg_analytics = get_current_oasis_utilization(current_df)
-        st.write("**Analytics Function Result:**")
+        
+        if not current_oasis_daily_analytics.empty:
+            st.write("**Analytics Function Output:**")
+            analytics_display = current_oasis_daily_analytics.copy()
+            analytics_display['Date_Formatted'] = analytics_display['Date'].dt.strftime('%Y-%m-%d')
+            st.dataframe(analytics_display[['Date_Formatted', 'WeekDay', 'People_Count', 'Utilization']], 
+                        use_container_width=True, hide_index=True)
+        else:
+            st.warning("Analytics function returned empty DataFrame")
+            
+        # DEBUG: Step-by-step analytics function debugging
+        st.write("**🔍 Step-by-step Analytics Function Debug:**")
+        
+        # Replicate the analytics function step by step
+        oasis_df_step1 = current_df[current_df['Room_Type'] == 'Oasis']
+        st.write(f"Step 1 - Filter Oasis: {len(oasis_df_step1)} records")
+        
+        if not oasis_df_step1.empty:
+            latest_week = oasis_df_step1['WeekStart'].max()
+            st.write(f"Step 2 - Latest week found: {latest_week}")
+            
+            oasis_df_step2 = oasis_df_step1[oasis_df_step1['WeekStart'] == latest_week]
+            st.write(f"Step 3 - Filter to latest week: {len(oasis_df_step2)} records")
+            
+            # Show sample of this filtered data
+            st.write("**Sample of filtered data used by analytics:**")
+            sample_analytics = oasis_df_step2[['Team', 'Date', 'WeekDay', 'WeekStart']].head(10)
+            st.dataframe(sample_analytics, use_container_width=True, hide_index=True)
+            
+            # Show the groupby operation step by step
+            daily_counts_step = oasis_df_step2.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
+            st.write(f"Step 4 - Groupby result: {len(daily_counts_step)} days")
+            st.dataframe(daily_counts_step, use_container_width=True, hide_index=True)
+          # Compare with manual calculation
+        st.write("**🔍 Comparison: Manual vs Analytics:**")
+        if not display_debug.empty:
+            comparison = []
+            for _, row in display_debug.iterrows():
+                date_str = row['Date']
+                manual_count = row['Used_Spots']
+                
+                # Find matching analytics result
+                analytics_match = current_oasis_daily_analytics[
+                    current_oasis_daily_analytics['Date'].dt.strftime('%Y-%m-%d') == date_str
+                ]
+                
+                if not analytics_match.empty:
+                    analytics_count = analytics_match.iloc[0]['People_Count']
+                else:
+                    analytics_count = "No match"
+                
+                comparison.append({
+                    'Date': date_str,
+                    'Manual_Count': manual_count,
+                    'Analytics_Count': analytics_count,
+                    'Difference': analytics_count - manual_count if isinstance(analytics_count, (int, float)) else "N/A"
+                })
+            
+            comparison_df = pd.DataFrame(comparison)
+            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+        else:
+            st.warning("No debug data to compare - check if there's current Oasis data")
         if not current_oasis_daily_analytics.empty:
             st.dataframe(current_oasis_daily_analytics[['Date', 'WeekDay', 'People_Count', 'Utilization']], use_container_width=True, hide_index=True)
         else:
             st.warning("Analytics function returned empty data")
-        
-        # Calculate overall stats
-        avg_utilization_debug = daily_counts_debug['Utilization_Percent'].mean()
-        total_used_spots = daily_counts_debug['Used_Spots'].sum()
-        total_capacity_days = len(daily_counts_debug) * OASIS_CAPACITY
-        overall_utilization = (total_used_spots / total_capacity_days * 100) if total_capacity_days > 0 else 0
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Average Daily Utilization (Debug)", f"{avg_utilization_debug:.1f}%")
-        with col2:
-            st.metric("Overall Weekly Utilization", f"{overall_utilization:.1f}%")
-        with col3:
-            st.metric("Total People-Days", total_used_spots)
+          # Calculate overall stats
+        if not display_debug.empty:
+            avg_utilization_debug = daily_counts_debug['Utilization_Percent'].mean()
+            total_used_spots = daily_counts_debug['Used_Spots'].sum()
+            total_capacity_days = len(daily_counts_debug) * OASIS_CAPACITY
+            overall_utilization = (total_used_spots / total_capacity_days * 100) if total_capacity_days > 0 else 0
+            
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Average Daily Utilization (Debug)", f"{avg_utilization_debug:.1f}%")
+            with col2:
+                st.metric("Overall Weekly Utilization", f"{overall_utilization:.1f}%")
+            with col3:
+                st.metric("Total People-Days", total_used_spots)
+        else:
+            st.info("No data available for utilization calculation")
     else:
         st.warning("No current Oasis data found")
 else:
