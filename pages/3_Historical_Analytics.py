@@ -447,16 +447,19 @@ def get_current_oasis_utilization(current_df):
     # DEBUG: Print what we're working with
     st.write(f"🔍 **DEBUG get_current_oasis_utilization**: Input has {len(current_df)} total records, {len(oasis_df)} Oasis records")
     
-    # Filter to the most recent week that has data (not necessarily current calendar week)
+    # Show all unique weeks in the data
     if not oasis_df.empty:
-        latest_week = oasis_df['WeekStart'].max()
-        st.write(f"🔍 **DEBUG**: Latest week with data: {latest_week.strftime('%Y-%m-%d')}")
-        oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
-        st.write(f"🔍 **DEBUG**: After filtering to latest week: {len(oasis_df)} records")
+        unique_weeks = oasis_df['WeekStart'].unique()
+        st.write(f"🔍 **DEBUG**: All weeks in data: {[w.strftime('%Y-%m-%d') for w in sorted(unique_weeks)]}")
+        
+        # For now, let's process ALL data instead of filtering to just one week
+        # This matches what the manual calculation is doing
+        st.write(f"🔍 **DEBUG**: Processing ALL Oasis data (not filtering by week)")
     
-    st.write(f"🔍 **DEBUG**: Date range in filtered data: {oasis_df['Date'].min()} to {oasis_df['Date'].max()}")
+    st.write(f"🔍 **DEBUG**: Date range in data: {oasis_df['Date'].min()} to {oasis_df['Date'].max()}")
     
     # EXACT UI logic replication: count unique Team (Name in UI) per Date
+    # Process ALL data, not just one week
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'Used_Spots']
     
@@ -683,11 +686,12 @@ if not current_df.empty:
         
         # Calculate current utilization
         current_project_rooms = len(current_df[current_df['Room_Type'] == 'Project Room']['Room'].unique())
-        current_project_util = (current_project_rooms / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0
-          # Calculate Oasis utilization exactly like UI does:
+        current_project_util = (current_project_rooms / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0        # Calculate Oasis utilization exactly like UI does:
         # UI logic: used_spots = df["Name"].nunique() per day, then utilization = used_spots/capacity * 100
         oasis_data = current_df[current_df['Room_Type'] == 'Oasis']
-        if not oasis_data.empty:            # Count unique people per day (matches UI calculation exactly)
+        if not oasis_data.empty:
+            # Count unique people per day (matches UI calculation exactly)
+            # Process ALL oasis data, not just one week
             unique_people_per_day = oasis_data.groupby('Date')['Team'].nunique()
             avg_daily_people = unique_people_per_day.mean() if len(unique_people_per_day) > 0 else 0
             current_oasis_util = (avg_daily_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
@@ -1163,6 +1167,12 @@ if not current_df.empty:
     if not oasis_current_raw.empty:
         st.write("**Current Week Oasis Raw Data:**")
         st.write(f"**Date range in data**: {oasis_current_raw['Date'].min().strftime('%Y-%m-%d')} to {oasis_current_raw['Date'].max().strftime('%Y-%m-%d')}")
+        
+        # Show which weeks this data spans
+        unique_weeks = oasis_current_raw['WeekStart'].unique()
+        week_strings = [w.strftime('%Y-%m-%d') for w in sorted(unique_weeks)]
+        st.write(f"**Weeks included**: {', '.join(week_strings)}")
+        
         st.dataframe(oasis_current_raw[['Team', 'Date', 'WeekDay', 'Confirmed']], use_container_width=True)
         
         # DEBUG: Check for duplicate records
@@ -1240,28 +1250,36 @@ if not current_df.empty:
         if not display_debug.empty and 'current_oasis_daily_analytics' in locals() and not current_oasis_daily_analytics.empty:
             comparison = []
             for _, row in display_debug.iterrows():
-                date_str = row['Date']
+                date_str = row['Date']  # This should be formatted like '2024-05-27'
                 manual_count = row['Used_Spots']
                 
-                # Find matching analytics result
+                # Find matching analytics result - convert analytics dates to same format
                 analytics_match = current_oasis_daily_analytics[
                     current_oasis_daily_analytics['Date'].dt.strftime('%Y-%m-%d') == date_str
                 ]
                 
                 if not analytics_match.empty:
                     analytics_count = analytics_match.iloc[0]['People_Count']
+                    difference = analytics_count - manual_count
                 else:
                     analytics_count = "No match"
+                    difference = "N/A"
                 
                 comparison.append({
                     'Date': date_str,
                     'Manual_Count': manual_count,
                     'Analytics_Count': analytics_count,
-                    'Difference': analytics_count - manual_count if isinstance(analytics_count, (int, float)) else "N/A"
+                    'Difference': difference
                 })
             
             comparison_df = pd.DataFrame(comparison)
             st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+            
+            # Show summary of matches vs mismatches
+            matches = sum(1 for item in comparison if item['Analytics_Count'] != "No match")
+            total = len(comparison)
+            st.write(f"**Match Summary**: {matches}/{total} dates matched between manual and analytics")
+            
         else:
             st.warning("No data available for comparison - check if there's current Oasis data and analytics function worked")
         if not current_oasis_daily_analytics.empty:
