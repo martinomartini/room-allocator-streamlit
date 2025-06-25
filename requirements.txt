@@ -2,3 +2,4 @@ streamlit>=1.28.0 # Use a recent stable version
 psycopg2-binary>=2.9.0 # For PostgreSQL connection
 pytz>=2023.3 # For timezone handling
 pandas>=1.5.0 # For displaying dataframes
+plotly>=5.0.0 # For interactive charts and analytics

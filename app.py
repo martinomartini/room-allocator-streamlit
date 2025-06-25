@@ -403,6 +403,12 @@ create_archive_tables(pool)
 # -----------------------------------------------------
 st.title("📅 Weekly Room Allocator")
 
+# Quick access to analytics dashboard
+col1, col2 = st.columns([3, 1])
+with col2:
+    if st.button("📊 View Analytics Dashboard", type="secondary"):
+        st.switch_page("pages/3_Historical_Analytics.py")
+
 st.info(
     """
     💡 **How This Works:**
