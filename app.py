@@ -325,8 +325,7 @@ def create_archive_tables(pool):
                     submission_time TIMESTAMP,
                     deleted_at TIMESTAMP DEFAULT NOW(),
                     deleted_by VARCHAR(255),
-                    deletion_reason TEXT
-                )
+                    deletion_reason TEXT                )
             """)
             
             cur.execute("""
@@ -337,6 +336,8 @@ def create_archive_tables(pool):
                     room_name VARCHAR(255),
                     date DATE,
                     allocated_at TIMESTAMP,
+                    confirmed BOOLEAN DEFAULT FALSE,
+                    confirmed_at TIMESTAMP,
                     deleted_at TIMESTAMP DEFAULT NOW(),
                     deleted_by VARCHAR(255),
                     deletion_reason TEXT
@@ -840,12 +841,13 @@ with st.form("oasis_add_form_main"):
                                 st.warning(f"⚠️ Oasis is full on {day_str}. Could not add {name_clean}.")
                                 added_to_all_selected = False
                             else:
-                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, 'Oasis', %s)", (name_clean, date_obj))
+                                # Insert unconfirmed allocation (needs matrix confirmation)  
+                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed) VALUES (%s, 'Oasis', %s, %s)", (name_clean, date_obj, False))
                         conn_adhoc.commit()
                         if added_to_all_selected and adhoc_oasis_days:
-                            st.success(f"✅ {name_clean} added to Oasis for selected day(s)!")
+                            st.success(f"✅ {name_clean} added to Oasis for selected day(s)! Please confirm attendance via the matrix below.")
                         elif adhoc_oasis_days: 
-                            st.info("ℹ️ Check messages above for details on your ad-hoc Oasis additions.")
+                            st.info("ℹ️ Check messages above for details on your ad-hoc Oasis additions. Please confirm attendance via the matrix below.")
                         st.rerun()
                 except Exception as e:
                     st.error(f"❌ Error adding to Oasis: {e}")
@@ -922,12 +924,14 @@ else:
         if st.button("💾 Save Oasis Matrix Changes", key="btn_save_oasis_matrix_changes"):
             try:
                 with conn_matrix.cursor() as cur:
+                    # Delete existing Oasis allocations for this week
                     cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis' AND team_name != 'Niek' AND date >= %s AND date <= %s", (oasis_overview_monday_display, oasis_overview_days_dates[-1]))
                     if "Niek" in edited_matrix.index: 
                         cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis' AND team_name = 'Niek' AND date >= %s AND date <= %s", (oasis_overview_monday_display, oasis_overview_days_dates[-1]))
                         for day_idx, day_col_name in enumerate(oasis_overview_day_names):
                             if edited_matrix.at["Niek", day_col_name]:
-                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", ("Niek", "Oasis", oasis_overview_monday_display + timedelta(days=day_idx)))
+                                # Insert confirmed allocation for Niek
+                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", ("Niek", "Oasis", oasis_overview_monday_display + timedelta(days=day_idx), True))
                     
                     occupied_counts_per_day = {day_col: 0 for day_col in oasis_overview_day_names}
                     if "Niek" in edited_matrix.index: 
@@ -941,13 +945,14 @@ else:
                             if edited_matrix.at[person_name_matrix, day_col_name]: 
                                 if occupied_counts_per_day[day_col_name] < oasis_capacity:
                                     date_obj_alloc = oasis_overview_monday_display + timedelta(days=day_idx)
-                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (person_name_matrix, "Oasis", date_obj_alloc))
+                                    # Insert confirmed allocation (matrix confirms attendance)
+                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", (person_name_matrix, "Oasis", date_obj_alloc, True))
                                     occupied_counts_per_day[day_col_name] += 1
                                 else:
                                     st.warning(f"⚠️ {person_name_matrix} could not be added to Oasis on {day_col_name}: capacity reached.")
                                     
                     conn_matrix.commit()
-                    st.success("✅ Oasis Matrix saved successfully!")
+                    st.success("✅ Oasis Matrix saved successfully! All entries marked as confirmed.")
                     st.rerun()
             except Exception as e_matrix_save:
                 st.error(f"❌ Failed to save Oasis Matrix: {e_matrix_save}")

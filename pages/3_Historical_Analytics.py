@@ -49,7 +49,8 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
                     SELECT team_name, room_name, date, 
                            EXTRACT(DOW FROM date) as day_of_week,
                            EXTRACT(WEEK FROM date) as week_number,
-                           EXTRACT(YEAR FROM date) as year
+                           EXTRACT(YEAR FROM date) as year,
+                           COALESCE(confirmed, FALSE) as confirmed
                     FROM weekly_allocations_archive 
                     WHERE date >= %s AND date <= %s
                     ORDER BY date DESC
@@ -58,7 +59,8 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
                     SELECT team_name, room_name, date,
                            EXTRACT(DOW FROM date) as day_of_week,
                            EXTRACT(WEEK FROM date) as week_number,
-                           EXTRACT(YEAR FROM date) as year
+                           EXTRACT(YEAR FROM date) as year,
+                           COALESCE(confirmed, FALSE) as confirmed
                     FROM weekly_allocations_archive 
                     ORDER BY date DESC
                     LIMIT 1000
@@ -68,7 +70,7 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
             if not rows:
                 return pd.DataFrame()
                 
-            df = pd.DataFrame(rows, columns=["Team", "Room", "Date", "DayOfWeek", "WeekNumber", "Year"])
+            df = pd.DataFrame(rows, columns=["Team", "Room", "Date", "DayOfWeek", "WeekNumber", "Year", "Confirmed"])
             df['Date'] = pd.to_datetime(df['Date'])
             df['WeekDay'] = df['Date'].dt.day_name()
             df['WeekStart'] = df['Date'] - pd.to_timedelta(df['Date'].dt.dayofweek, unit='d')
@@ -136,23 +138,25 @@ def get_usage_statistics(pool, weeks_back=12):
     
     if df.empty:
         return {}
-    
-    # Separate project rooms and Oasis
+      # Separate project rooms and Oasis
     project_df = df[df['Room_Type'] == 'Project Room']
     oasis_df = df[df['Room_Type'] == 'Oasis']
     
+    # Filter Oasis to only confirmed entries
+    oasis_confirmed_df = oasis_df[oasis_df['Confirmed'] == True]
+    
     # Calculate statistics
     stats = {
-        'total_allocations': len(df),
+        'total_allocations': len(project_df) + len(oasis_confirmed_df),  # Only count confirmed Oasis
         'project_allocations': len(project_df),
-        'oasis_allocations': len(oasis_df),
+        'oasis_allocations': len(oasis_confirmed_df),  # Only confirmed Oasis allocations
         'unique_teams': project_df['Team'].nunique() if not project_df.empty else 0,
-        'unique_oasis_users': oasis_df['Team'].nunique() if not oasis_df.empty else 0,
+        'unique_oasis_users': oasis_confirmed_df['Team'].nunique() if not oasis_confirmed_df.empty else 0,  # Only confirmed users
         'unique_project_rooms': project_df['Room'].nunique() if not project_df.empty else 0,
         'date_range': f"{df['Date'].min().strftime('%Y-%m-%d')} to {df['Date'].max().strftime('%Y-%m-%d')}",
         'most_popular_project_room': project_df['Room'].mode().iloc[0] if not project_df.empty and len(project_df['Room'].mode()) > 0 else "N/A",
         'most_popular_day_projects': project_df['WeekDay'].mode().iloc[0] if not project_df.empty and len(project_df['WeekDay'].mode()) > 0 else "N/A",
-        'most_popular_day_oasis': oasis_df['WeekDay'].mode().iloc[0] if not oasis_df.empty and len(oasis_df['WeekDay'].mode()) > 0 else "N/A",
+        'most_popular_day_oasis': oasis_confirmed_df['WeekDay'].mode().iloc[0] if not oasis_confirmed_df.empty and len(oasis_confirmed_df['WeekDay'].mode()) > 0 else "N/A",  # Only confirmed
         'most_active_team': project_df['Team'].mode().iloc[0] if not project_df.empty and len(project_df['Team'].mode()) > 0 else "N/A",
         'current_project_preferences': len(preferences['project']),
         'current_oasis_preferences': len(preferences['oasis'])
@@ -170,10 +174,12 @@ def get_room_utilization(pool, weeks_back=8):
     
     if df.empty:
         return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
-    
-    # Separate project rooms and Oasis
+      # Separate project rooms and Oasis
     project_df = df[df['Room_Type'] == 'Project Room']
     oasis_df = df[df['Room_Type'] == 'Oasis']
+    
+    # Filter Oasis to only confirmed entries
+    oasis_confirmed_df = oasis_df[oasis_df['Confirmed'] == True]
     
     # Calculate project room utilization
     project_usage = pd.DataFrame()
@@ -183,11 +189,11 @@ def get_room_utilization(pool, weeks_back=8):
         total_possible_slots = 4 * weeks_back
         project_usage['Utilization_Rate'] = (project_usage['Usage_Count'] / total_possible_slots * 100).round(1)
         project_usage = project_usage.sort_values('Utilization_Rate', ascending=False)
-      # Calculate Oasis utilization (daily basis) - count actual attendees per day
+      # Calculate Oasis utilization (daily basis) - count actual confirmed attendees per day
     oasis_usage = pd.DataFrame()
-    if not oasis_df.empty:
-        # Count actual attendees per day for Oasis (each person counted once per day)
-        oasis_daily = oasis_df.groupby(['Date'])['Team'].count().reset_index()
+    if not oasis_confirmed_df.empty:
+        # Count actual confirmed attendees per day for Oasis (each person counted once per day)
+        oasis_daily = oasis_confirmed_df.groupby(['Date'])['Team'].count().reset_index()
         oasis_daily.columns = ['Date', 'Attendees_Count']
         
         # Calculate daily utilization rates
@@ -200,7 +206,7 @@ def get_room_utilization(pool, weeks_back=8):
         
         oasis_usage = pd.DataFrame({
             'Room': ['Oasis'],
-            'Total_Bookings': [len(oasis_df)],
+            'Total_Bookings': [len(oasis_confirmed_df)],  # Only confirmed bookings
             'Avg_Daily_Attendees': [round(avg_attendees, 1)],
             'Max_Daily_Attendees': [max_attendees],
             'Avg_Daily_Utilization': [round(avg_utilization, 1)],
@@ -251,9 +257,10 @@ def get_daily_utilization(pool, weeks_back=8):
         # Project rooms utilization
         project_rooms_used = len(day_data[day_data['Room_Type'] == 'Project Room']['Room'].unique())
         project_utilization = (project_rooms_used / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0
-        
-        # Oasis utilization (count people, not rooms)
-        oasis_people = len(day_data[day_data['Room_Type'] == 'Oasis'])
+          # Oasis utilization (count confirmed people only, not rooms)
+        oasis_data = day_data[day_data['Room_Type'] == 'Oasis']
+        oasis_confirmed = oasis_data[oasis_data['Confirmed'] == True]
+        oasis_people = len(oasis_confirmed)
         oasis_utilization = (oasis_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
         
         daily_stats.append({
@@ -282,16 +289,16 @@ def get_current_allocations(pool):
                 SELECT team_name, room_name, date, 
                        EXTRACT(DOW FROM date) as day_of_week,
                        EXTRACT(WEEK FROM date) as week_number,
-                       EXTRACT(YEAR FROM date) as year
-                FROM weekly_allocations 
-                ORDER BY date DESC
+                       EXTRACT(YEAR FROM date) as year,
+                       COALESCE(confirmed, FALSE) as confirmed
+                FROM weekly_allocations                ORDER BY date DESC
             """)
             
             rows = cur.fetchall()
             if not rows:
                 return pd.DataFrame()
                 
-            df = pd.DataFrame(rows, columns=["Team", "Room", "Date", "DayOfWeek", "WeekNumber", "Year"])
+            df = pd.DataFrame(rows, columns=["Team", "Room", "Date", "DayOfWeek", "WeekNumber", "Year", "Confirmed"])
             df['Date'] = pd.to_datetime(df['Date'])
             df['WeekDay'] = df['Date'].dt.day_name()
             df['WeekStart'] = df['Date'] - pd.to_timedelta(df['Date'].dt.dayofweek, unit='d')
@@ -334,7 +341,7 @@ def get_combined_allocations(pool, start_date=None, end_date=None, include_curre
     return combined_df
 
 def get_oasis_daily_breakdown(pool, weeks_back=8):
-    """Get detailed daily Oasis utilization breakdown"""
+    """Get detailed daily Oasis utilization breakdown - only confirmed entries"""
     if not pool: return pd.DataFrame()
     
     end_date = date.today()
@@ -350,9 +357,15 @@ def get_oasis_daily_breakdown(pool, weeks_back=8):
     if oasis_df.empty:
         return pd.DataFrame()
     
-    # Calculate daily breakdown
+    # Filter to only confirmed Oasis entries (people who actually checked the box)
+    oasis_df = oasis_df[oasis_df['Confirmed'] == True]
+    
+    if oasis_df.empty:
+        return pd.DataFrame()
+    
+    # Calculate daily breakdown (only confirmed attendees)
     daily_breakdown = oasis_df.groupby(['Date', 'WeekDay']).agg({
-        'Team': 'count'  # Count actual attendees per day
+        'Team': 'count'  # Count actual confirmed attendees per day
     }).reset_index()
     
     daily_breakdown.columns = ['Date', 'WeekDay', 'Attendees']
@@ -368,7 +381,7 @@ def get_oasis_daily_breakdown(pool, weeks_back=8):
     return daily_breakdown
 
 def get_current_oasis_utilization(current_df):
-    """Calculate current week Oasis utilization per day correctly"""
+    """Calculate current week Oasis utilization per day correctly - only confirmed entries"""
     if current_df.empty:
         return pd.DataFrame(), 0.0
     
@@ -378,12 +391,18 @@ def get_current_oasis_utilization(current_df):
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
+    # Filter to only confirmed Oasis entries (people who actually checked the box)
+    oasis_df = oasis_df[oasis_df['Confirmed'] == True]
+    
+    if oasis_df.empty:
+        return pd.DataFrame(), 0.0
+    
     # Filter to only current week (most recent week in the data)
     if not oasis_df.empty:
         latest_week = oasis_df['WeekStart'].max()
         oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
     
-    # Count unique people per day
+    # Count unique people per day (only confirmed attendees)
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
@@ -397,7 +416,7 @@ def get_current_oasis_utilization(current_df):
     return daily_counts, avg_utilization
 
 def get_corrected_oasis_utilization(df, weeks_back=8):
-    """Calculate historical Oasis utilization per day correctly"""
+    """Calculate historical Oasis utilization per day correctly - only confirmed entries"""
     if df.empty:
         return pd.DataFrame(), 0.0
     
@@ -407,7 +426,13 @@ def get_corrected_oasis_utilization(df, weeks_back=8):
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
-    # Count unique people per day
+    # Filter to only confirmed Oasis entries (people who actually checked the box)
+    oasis_df = oasis_df[oasis_df['Confirmed'] == True]
+    
+    if oasis_df.empty:
+        return pd.DataFrame(), 0.0
+    
+    # Count unique people per day (only confirmed attendees)
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
@@ -515,19 +540,23 @@ if not current_df.empty:
     
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        current_total = len(current_df)
+        # Only count confirmed Oasis entries in total
+        current_project = len(current_df[current_df['Room_Type'] == 'Project Room'])
+        current_oasis_confirmed = len(current_df[(current_df['Room_Type'] == 'Oasis') & (current_df['Confirmed'] == True)])
+        current_total = current_project + current_oasis_confirmed
         st.metric("Current Allocations", current_total)
     
     with col2:
-        current_project = len(current_df[current_df['Room_Type'] == 'Project Room'])
         st.metric("Project Room Allocations", current_project)
     
     with col3:
-        current_oasis = len(current_df[current_df['Room_Type'] == 'Oasis'])
-        st.metric("Oasis Allocations", current_oasis)
+        st.metric("Oasis Allocations (Confirmed)", current_oasis_confirmed)
     
     with col4:
-        current_teams = current_df['Team'].nunique()
+        # Count teams from both project rooms and confirmed Oasis
+        project_teams = set(current_df[current_df['Room_Type'] == 'Project Room']['Team'].unique())
+        oasis_teams = set(current_df[(current_df['Room_Type'] == 'Oasis') & (current_df['Confirmed'] == True)]['Team'].unique())
+        current_teams = len(project_teams.union(oasis_teams))
         st.metric("Active Teams", current_teams)
       # Current week utilization
     if not current_df.empty:
