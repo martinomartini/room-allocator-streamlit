@@ -579,10 +579,39 @@ with st.spinner("Loading analytics data..."):
     room_util = get_room_utilization(pool, weeks_back)
     weekly_trends = get_weekly_trends(pool, weeks_back)
     preferences = get_preferences_data(pool, weeks_back)
-      # Get corrected Oasis utilization
+      # Get corrected Oasis utilization      # Get corrected Oasis utilization
     current_oasis_daily, current_oasis_avg = get_current_oasis_utilization(current_df)
     historical_oasis_daily, historical_oasis_avg = get_corrected_oasis_utilization(historical_df, weeks_back)
     oasis_daily_breakdown = get_oasis_daily_breakdown(pool, weeks_back)
+
+# Debug section to show actual data vs UI comparison
+with st.expander("🐛 Debug: Raw Data Analysis", expanded=False):
+    st.write("**Raw Current Week Oasis Data vs Analytics Calculation**")
+    if not current_df.empty:
+        current_oasis_raw = current_df[current_df['Room_Type'] == 'Oasis'].copy()
+        if not current_oasis_raw.empty:
+            st.write(f"**Total Oasis records in current week**: {len(current_oasis_raw)}")
+            st.write(f"**OASIS_CAPACITY**: {OASIS_CAPACITY}")
+            
+            # Show daily breakdown calculation that matches UI
+            daily_counts_debug = current_oasis_raw.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
+            daily_counts_debug.columns = ['Date', 'WeekDay', 'Unique_People']
+            daily_counts_debug['Spots_Left'] = OASIS_CAPACITY - daily_counts_debug['Unique_People']
+            daily_counts_debug['Calculated_Utilization'] = (daily_counts_debug['Unique_People'] / OASIS_CAPACITY * 100).round(1)
+            daily_counts_debug['Date_Formatted'] = daily_counts_debug['Date'].dt.strftime('%Y-%m-%d')
+            
+            st.write("**This should match the UI 'spots left' calculation**:")
+            st.dataframe(daily_counts_debug[['Date_Formatted', 'WeekDay', 'Unique_People', 'Spots_Left', 'Calculated_Utilization']], 
+                        use_container_width=True, hide_index=True)
+            
+            # Show some raw data
+            st.write("**Sample raw allocation records**:")
+            sample_data = current_oasis_raw[['Team', 'Date', 'WeekDay', 'Confirmed']].head(10)
+            st.dataframe(sample_data, use_container_width=True, hide_index=True)
+        else:
+            st.info("No current Oasis data found")
+    else:
+        st.info("No current week data found")
 
 # Display key metrics
 if stats:
@@ -669,15 +698,22 @@ if not current_df.empty:
         
         with col2:
             st.metric("Oasis Utilization", f"{current_oasis_util:.1f}%", 
-                     f"Avg {avg_daily_people:.1f} people/day")
-              # Show daily breakdown for current week
+                     f"Avg {avg_daily_people:.1f} people/day")            # Show daily breakdown for current week
             if not current_oasis_daily.empty:
                 with st.expander("📊 Current Week Daily Breakdown"):
+                    st.info("🔍 **Debug Info**: This uses the same logic as the UI 'spots left' calculation: unique people per day from weekly_allocations table (all allocations, not just confirmed)")
+                    
                     # Add a formatted date column for clarity
                     display_df = current_oasis_daily.copy()
                     display_df['Date_Formatted'] = display_df['Date'].dt.strftime('%Y-%m-%d')
-                    st.dataframe(display_df[['Date_Formatted', 'WeekDay', 'People_Count', 'Utilization']], 
-                               use_container_width=True, hide_index=True)
+                    
+                    # Add spots_left column to match UI display
+                    if 'Spots_Left' in display_df.columns:
+                        st.dataframe(display_df[['Date_Formatted', 'WeekDay', 'People_Count', 'Spots_Left', 'Utilization']], 
+                                   use_container_width=True, hide_index=True)
+                    else:
+                        st.dataframe(display_df[['Date_Formatted', 'WeekDay', 'People_Count', 'Utilization']], 
+                                   use_container_width=True, hide_index=True)
     
     # Current week schedule
     with st.expander("📋 View Current Week Schedule"):        # Separate project and oasis data
@@ -1105,6 +1141,23 @@ if not current_df.empty:
     if not oasis_current_raw.empty:
         st.write("**Current Week Oasis Raw Data:**")
         st.dataframe(oasis_current_raw[['Team', 'Date', 'WeekDay', 'Confirmed']], use_container_width=True)
+        
+        # DEBUG: Check for duplicate records
+        st.write("**Debug: Check for duplicates in analytics data source:**")
+        duplicate_check = oasis_current_raw.groupby(['Team', 'Date']).size().reset_index(name='Count')
+        duplicates = duplicate_check[duplicate_check['Count'] > 1]
+        if not duplicates.empty:
+            st.error("⚠️ **FOUND DUPLICATES!** This explains the double counting:")
+            st.dataframe(duplicates, use_container_width=True)
+        else:
+            st.success("✅ No duplicates found in raw data")
+        
+        # DEBUG: Show unique people per day from raw data
+        st.write("**Debug: Manual count of unique people per day from raw data:**")
+        manual_count = oasis_current_raw.groupby('Date')['Team'].nunique().reset_index()
+        manual_count.columns = ['Date', 'Manual_Unique_Count']
+        manual_count['Date_Str'] = manual_count['Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(manual_count[['Date_Str', 'Manual_Unique_Count']], use_container_width=True)
         
         # Show UI calculation logic step by step
         st.write("**UI Logic Replication:**")
