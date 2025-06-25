@@ -1083,3 +1083,55 @@ if stats:
 
 else:
     st.info("No historical data available. Allocations will appear here once the system has been used.")
+
+# DEBUG: Oasis Utilization Calculation Analysis
+st.subheader("🔍 DEBUG: Oasis Utilization Analysis")
+st.info("This section shows exactly how Oasis utilization is calculated to match the UI.")
+
+if not current_df.empty:
+    oasis_current_raw = current_df[current_df['Room_Type'] == 'Oasis']
+    
+    if not oasis_current_raw.empty:
+        st.write("**Current Week Oasis Raw Data:**")
+        st.dataframe(oasis_current_raw[['Team', 'Date', 'WeekDay', 'Confirmed']], use_container_width=True)
+        
+        # Show UI calculation logic step by step
+        st.write("**UI Logic Replication:**")
+        
+        # Group by date and count unique people (exactly like UI)
+        daily_counts_debug = oasis_current_raw.groupby('Date')['Team'].nunique().reset_index()
+        daily_counts_debug.columns = ['Date', 'Used_Spots']
+        daily_counts_debug['Spots_Left'] = OASIS_CAPACITY - daily_counts_debug['Used_Spots']
+        daily_counts_debug['Utilization_Percent'] = (daily_counts_debug['Used_Spots'] / OASIS_CAPACITY * 100).round(1)
+        daily_counts_debug['WeekDay'] = daily_counts_debug['Date'].dt.day_name()
+        
+        st.write("**Daily Breakdown (Matches UI 'spots left' logic):**")
+        display_debug = daily_counts_debug[['Date', 'WeekDay', 'Used_Spots', 'Spots_Left', 'Utilization_Percent']].copy()
+        display_debug['Date'] = display_debug['Date'].dt.strftime('%Y-%m-%d')
+        st.dataframe(display_debug, use_container_width=True, hide_index=True)
+        
+        # Show the analytics calculation for comparison
+        current_oasis_daily_analytics, current_oasis_avg_analytics = get_current_oasis_utilization(current_df)
+        st.write("**Analytics Function Result:**")
+        if not current_oasis_daily_analytics.empty:
+            st.dataframe(current_oasis_daily_analytics[['Date', 'WeekDay', 'People_Count', 'Utilization']], use_container_width=True, hide_index=True)
+        else:
+            st.warning("Analytics function returned empty data")
+        
+        # Calculate overall stats
+        avg_utilization_debug = daily_counts_debug['Utilization_Percent'].mean()
+        total_used_spots = daily_counts_debug['Used_Spots'].sum()
+        total_capacity_days = len(daily_counts_debug) * OASIS_CAPACITY
+        overall_utilization = (total_used_spots / total_capacity_days * 100) if total_capacity_days > 0 else 0
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Average Daily Utilization (Debug)", f"{avg_utilization_debug:.1f}%")
+        with col2:
+            st.metric("Overall Weekly Utilization", f"{overall_utilization:.1f}%")
+        with col3:
+            st.metric("Total People-Days", total_used_spots)
+    else:
+        st.warning("No current Oasis data found")
+else:
+    st.warning("No current week data found")
