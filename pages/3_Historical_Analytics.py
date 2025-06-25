@@ -183,24 +183,28 @@ def get_room_utilization(pool, weeks_back=8):
         total_possible_slots = 4 * weeks_back
         project_usage['Utilization_Rate'] = (project_usage['Usage_Count'] / total_possible_slots * 100).round(1)
         project_usage = project_usage.sort_values('Utilization_Rate', ascending=False)
-    
-    # Calculate Oasis utilization (daily basis)
+      # Calculate Oasis utilization (daily basis) - count actual attendees per day
     oasis_usage = pd.DataFrame()
     if not oasis_df.empty:
-        # Count unique users per day for Oasis
-        oasis_daily = oasis_df.groupby(['Date'])['Team'].nunique().reset_index()
-        oasis_daily.columns = ['Date', 'Users_Count']
+        # Count actual attendees per day for Oasis (each person counted once per day)
+        oasis_daily = oasis_df.groupby(['Date'])['Team'].count().reset_index()
+        oasis_daily.columns = ['Date', 'Attendees_Count']
         
-        # Calculate average utilization
-        oasis_capacity = 15  # Based on the capacity from rooms.json
-        avg_users = oasis_daily['Users_Count'].mean()
-        utilization_rate = (avg_users / oasis_capacity * 100).round(1)
+        # Calculate daily utilization rates
+        oasis_daily['Daily_Utilization'] = (oasis_daily['Attendees_Count'] / OASIS_CAPACITY * 100).round(1)
+        
+        # Calculate average utilization across all days
+        avg_attendees = oasis_daily['Attendees_Count'].mean()
+        avg_utilization = oasis_daily['Daily_Utilization'].mean()
+        max_attendees = oasis_daily['Attendees_Count'].max()
         
         oasis_usage = pd.DataFrame({
             'Room': ['Oasis'],
-            'Usage_Count': [len(oasis_df)],
-            'Avg_Daily_Users': [avg_users],
-            'Utilization_Rate': [utilization_rate]
+            'Total_Bookings': [len(oasis_df)],
+            'Avg_Daily_Attendees': [round(avg_attendees, 1)],
+            'Max_Daily_Attendees': [max_attendees],
+            'Avg_Daily_Utilization': [round(avg_utilization, 1)],
+            'Capacity': [OASIS_CAPACITY]
         })
     
     return {'project': project_usage, 'oasis': oasis_usage}
@@ -329,6 +333,82 @@ def get_combined_allocations(pool, start_date=None, end_date=None, include_curre
     
     return combined_df
 
+def get_oasis_daily_breakdown(pool, weeks_back=8):
+    """Get detailed daily Oasis utilization breakdown"""
+    if not pool: return pd.DataFrame()
+    
+    end_date = date.today()
+    start_date = end_date - timedelta(weeks=weeks_back)
+    df = get_historical_allocations(pool, start_date, end_date)
+    
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Filter for Oasis only
+    oasis_df = df[df['Room_Type'] == 'Oasis']
+    
+    if oasis_df.empty:
+        return pd.DataFrame()
+    
+    # Calculate daily breakdown
+    daily_breakdown = oasis_df.groupby(['Date', 'WeekDay']).agg({
+        'Team': 'count'  # Count actual attendees per day
+    }).reset_index()
+    
+    daily_breakdown.columns = ['Date', 'WeekDay', 'Attendees']
+    daily_breakdown['Utilization_Rate'] = (daily_breakdown['Attendees'] / OASIS_CAPACITY * 100).round(1)
+    daily_breakdown['Capacity'] = OASIS_CAPACITY
+    daily_breakdown['Date'] = daily_breakdown['Date'].dt.strftime('%Y-%m-%d')
+    
+    # Reorder by weekday
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+    daily_breakdown['WeekDay'] = pd.Categorical(daily_breakdown['WeekDay'], categories=day_order, ordered=True)
+    daily_breakdown = daily_breakdown.sort_values(['Date', 'WeekDay'], ascending=[False, True])
+    
+    return daily_breakdown
+
+def get_current_oasis_utilization(current_df):
+    """Calculate current week Oasis utilization per day correctly"""
+    if current_df.empty:
+        return pd.DataFrame(), 0.0
+    
+    # Filter for Oasis allocations only
+    oasis_df = current_df[current_df['Room_Type'] == 'Oasis']
+    
+    if oasis_df.empty:
+        return pd.DataFrame(), 0.0
+    
+    # Count unique people per day
+    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
+    daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
+    daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
+    
+    # Calculate average utilization
+    avg_utilization = daily_counts['Utilization'].mean()
+    
+    return daily_counts, avg_utilization
+
+def get_corrected_oasis_utilization(df, weeks_back=8):
+    """Calculate historical Oasis utilization per day correctly"""
+    if df.empty:
+        return pd.DataFrame(), 0.0
+    
+    # Filter for Oasis allocations only
+    oasis_df = df[df['Room_Type'] == 'Oasis']
+    
+    if oasis_df.empty:
+        return pd.DataFrame(), 0.0
+    
+    # Count unique people per day
+    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
+    daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
+    daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
+    
+    # Calculate average utilization
+    avg_utilization = daily_counts['Utilization'].mean()
+    
+    return daily_counts, avg_utilization
+
 # --- Streamlit App ---
 st.title("📊 Historical Data & Analytics")
 
@@ -373,15 +453,17 @@ with st.spinner("Loading analytics data..."):
                                          include_current)
       # Get statistics
     stats = get_usage_statistics(pool, weeks_back)
-    daily_util = get_daily_utilization(pool, weeks_back)
-    
-    # Get additional data for analysis
+    daily_util = get_daily_utilization(pool, weeks_back)    # Get additional data for analysis
     historical_df = get_historical_allocations(pool, 
                                               date.today() - timedelta(weeks=weeks_back), 
                                               date.today())
     room_util = get_room_utilization(pool, weeks_back)
     weekly_trends = get_weekly_trends(pool, weeks_back)
     preferences = get_preferences_data(pool, weeks_back)
+      # Get corrected Oasis utilization
+    current_oasis_daily, current_oasis_avg = get_current_oasis_utilization(current_df)
+    historical_oasis_daily, historical_oasis_avg = get_corrected_oasis_utilization(historical_df, weeks_back)
+    oasis_daily_breakdown = get_oasis_daily_breakdown(pool, weeks_back)
 
 # Display key metrics
 if stats:
@@ -439,8 +521,7 @@ if not current_df.empty:
     with col4:
         current_teams = current_df['Team'].nunique()
         st.metric("Active Teams", current_teams)
-    
-    # Current week utilization
+      # Current week utilization
     if not current_df.empty:
         st.write("**Current Week Utilization**")
         
@@ -448,16 +529,24 @@ if not current_df.empty:
         current_project_rooms = len(current_df[current_df['Room_Type'] == 'Project Room']['Room'].unique())
         current_project_util = (current_project_rooms / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0
         
-        current_oasis_people = len(current_df[current_df['Room_Type'] == 'Oasis'])
-        current_oasis_util = (current_oasis_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+        # Use corrected Oasis utilization calculation
+        current_oasis_util = current_oasis_avg if current_oasis_avg > 0 else 0
+        total_current_oasis_people = len(current_df[current_df['Room_Type'] == 'Oasis'])
         
         col1, col2 = st.columns(2)
         with col1:
             st.metric("Project Rooms Utilization", f"{current_project_util:.1f}%", 
                      f"{current_project_rooms}/{TOTAL_PROJECT_ROOMS} rooms")
+        
         with col2:
             st.metric("Oasis Utilization", f"{current_oasis_util:.1f}%", 
-                     f"{current_oasis_people}/{OASIS_CAPACITY} people")
+                     f"Avg daily attendance")
+            
+            # Show daily breakdown for current week
+            if not current_oasis_daily.empty:
+                with st.expander("📊 Current Week Daily Breakdown"):
+                    st.dataframe(current_oasis_daily[['WeekDay', 'People_Count', 'Utilization']], 
+                               use_container_width=True, hide_index=True)
     
     # Current week schedule
     with st.expander("📋 View Current Week Schedule"):
@@ -524,9 +613,9 @@ with col2:
         # Create a gauge-like visualization for Oasis
         fig_oasis = go.Figure(go.Indicator(
             mode = "gauge+number+delta",
-            value = oasis_data['Utilization_Rate'],
+            value = oasis_data['Avg_Daily_Utilization'],
             domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Oasis Utilization %"},
+            title = {'text': "Avg Daily Oasis Utilization %"},
             delta = {'reference': 75},
             gauge = {'axis': {'range': [None, 100]},
                      'bar': {'color': "darkblue"},
@@ -540,10 +629,51 @@ with col2:
         fig_oasis.update_layout(height=300)
         st.plotly_chart(fig_oasis, use_container_width=True)
         
-        st.dataframe(room_util['oasis'][['Usage_Count', 'Avg_Daily_Users', 'Utilization_Rate']], 
+        st.dataframe(room_util['oasis'][['Total_Bookings', 'Avg_Daily_Attendees', 'Max_Daily_Attendees', 'Avg_Daily_Utilization', 'Capacity']], 
                     use_container_width=True, hide_index=True)
     else:
         st.info("No Oasis data available for the selected period.")
+
+# Daily Oasis Breakdown
+if not oasis_daily_breakdown.empty:
+    st.subheader("🌿 Daily Oasis Utilization Breakdown")
+    
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        # Create daily utilization chart
+        fig_daily = px.bar(oasis_daily_breakdown, 
+                          x='Date', 
+                          y='Attendees',
+                          title=f"Daily Oasis Attendance Over Last {weeks_back} Weeks",
+                          labels={'Attendees': 'Number of Attendees', 'Date': 'Date'},
+                          hover_data=['WeekDay', 'Utilization_Rate'])
+        
+        # Add capacity line
+        fig_daily.add_hline(y=OASIS_CAPACITY, line_dash="dash", line_color="red",
+                           annotation_text=f"Capacity ({OASIS_CAPACITY})")
+        
+        fig_daily.update_layout(height=400, xaxis_tickangle=-45)
+        st.plotly_chart(fig_daily, use_container_width=True)
+    
+    with col2:
+        st.write("**Daily Statistics**")
+        avg_daily_util = oasis_daily_breakdown['Utilization_Rate'].mean()
+        max_daily_util = oasis_daily_breakdown['Utilization_Rate'].max()
+        min_daily_util = oasis_daily_breakdown['Utilization_Rate'].min()
+        
+        st.metric("Average Daily Utilization", f"{avg_daily_util:.1f}%")
+        st.metric("Highest Daily Utilization", f"{max_daily_util:.1f}%")
+        st.metric("Lowest Daily Utilization", f"{min_daily_util:.1f}%")
+        
+        # Show top 5 busiest days
+        st.write("**Top 5 Busiest Days**")
+        top_days = oasis_daily_breakdown.nlargest(5, 'Attendees')[['Date', 'WeekDay', 'Attendees', 'Utilization_Rate']]
+        st.dataframe(top_days, use_container_width=True, hide_index=True)
+    
+    # Detailed daily breakdown table
+    with st.expander("📊 View Complete Daily Breakdown"):
+        st.dataframe(oasis_daily_breakdown, use_container_width=True, hide_index=True)
 
 # Weekly Trends
 if not weekly_trends.empty:
