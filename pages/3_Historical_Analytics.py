@@ -607,13 +607,11 @@ with col1:
 
 with col2:
     st.write("**Oasis Utilization**")
-    if not room_util['oasis'].empty:
-        oasis_data = room_util['oasis'].iloc[0]
-        
-        # Create a gauge-like visualization for Oasis
+    if historical_oasis_avg > 0:
+        # Create a gauge-like visualization for Oasis using corrected calculation
         fig_oasis = go.Figure(go.Indicator(
             mode = "gauge+number+delta",
-            value = oasis_data['Avg_Daily_Utilization'],
+            value = historical_oasis_avg,
             domain = {'x': [0, 1], 'y': [0, 1]},
             title = {'text': "Avg Daily Oasis Utilization %"},
             delta = {'reference': 75},
@@ -622,34 +620,37 @@ with col2:
                      'steps': [
                          {'range': [0, 50], 'color': "lightgray"},
                          {'range': [50, 80], 'color': "yellow"},
-                         {'range': [80, 100], 'color': "red"}],
-                     'threshold': {'line': {'color': "red", 'width': 4},
+                         {'range': [80, 100], 'color': "red"}],                     'threshold': {'line': {'color': "red", 'width': 4},
                                    'thickness': 0.75, 'value': 90}}))
         
         fig_oasis.update_layout(height=300)
         st.plotly_chart(fig_oasis, use_container_width=True)
         
-        st.dataframe(room_util['oasis'][['Total_Bookings', 'Avg_Daily_Attendees', 'Max_Daily_Attendees', 'Avg_Daily_Utilization', 'Capacity']], 
-                    use_container_width=True, hide_index=True)
+        # Show corrected Oasis statistics
+        if not historical_oasis_daily.empty:
+            st.write("**Historical Oasis Statistics:**")
+            st.metric("Average Daily Utilization", f"{historical_oasis_avg:.1f}%")
+            st.metric("Total Days with Data", len(historical_oasis_daily))
+            max_daily = historical_oasis_daily['Utilization'].max()
+            st.metric("Peak Day Utilization", f"{max_daily:.1f}%")
     else:
         st.info("No Oasis data available for the selected period.")
 
-# Daily Oasis Breakdown
-if not oasis_daily_breakdown.empty:
+# Daily Oasis Breakdown (using corrected data)
+if not historical_oasis_daily.empty:
     st.subheader("🌿 Daily Oasis Utilization Breakdown")
     
     col1, col2 = st.columns([2, 1])
     
     with col1:
         # Create daily utilization chart
-        fig_daily = px.bar(oasis_daily_breakdown, 
+        fig_daily = px.bar(historical_oasis_daily, 
                           x='Date', 
-                          y='Attendees',
+                          y='People_Count',
                           title=f"Daily Oasis Attendance Over Last {weeks_back} Weeks",
-                          labels={'Attendees': 'Number of Attendees', 'Date': 'Date'},
-                          hover_data=['WeekDay', 'Utilization_Rate'])
-        
-        # Add capacity line
+                          labels={'People_Count': 'Number of People', 'Date': 'Date'},
+                          hover_data=['WeekDay', 'Utilization'])
+          # Add capacity line
         fig_daily.add_hline(y=OASIS_CAPACITY, line_dash="dash", line_color="red",
                            annotation_text=f"Capacity ({OASIS_CAPACITY})")
         
@@ -658,9 +659,9 @@ if not oasis_daily_breakdown.empty:
     
     with col2:
         st.write("**Daily Statistics**")
-        avg_daily_util = oasis_daily_breakdown['Utilization_Rate'].mean()
-        max_daily_util = oasis_daily_breakdown['Utilization_Rate'].max()
-        min_daily_util = oasis_daily_breakdown['Utilization_Rate'].min()
+        avg_daily_util = historical_oasis_daily['Utilization'].mean()
+        max_daily_util = historical_oasis_daily['Utilization'].max()
+        min_daily_util = historical_oasis_daily['Utilization'].min()
         
         st.metric("Average Daily Utilization", f"{avg_daily_util:.1f}%")
         st.metric("Highest Daily Utilization", f"{max_daily_util:.1f}%")
@@ -668,12 +669,12 @@ if not oasis_daily_breakdown.empty:
         
         # Show top 5 busiest days
         st.write("**Top 5 Busiest Days**")
-        top_days = oasis_daily_breakdown.nlargest(5, 'Attendees')[['Date', 'WeekDay', 'Attendees', 'Utilization_Rate']]
+        top_days = historical_oasis_daily.nlargest(5, 'People_Count')[['Date', 'WeekDay', 'People_Count', 'Utilization']]
         st.dataframe(top_days, use_container_width=True, hide_index=True)
     
     # Detailed daily breakdown table
     with st.expander("📊 View Complete Daily Breakdown"):
-        st.dataframe(oasis_daily_breakdown, use_container_width=True, hide_index=True)
+        st.dataframe(historical_oasis_daily, use_container_width=True, hide_index=True)
 
 # Weekly Trends
 if not weekly_trends.empty:
