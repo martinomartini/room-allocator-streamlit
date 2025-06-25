@@ -24,14 +24,21 @@ except pytz.UnknownTimeZoneError:
 
 # --- Import from main app ---
 try:
-    from app import get_db_connection_pool, get_connection, return_connection
+    from app import get_db_connection_pool, get_connection, return_connection, AVAILABLE_ROOMS
+    # Calculate room counts from rooms.json
+    PROJECT_ROOMS = [r for r in AVAILABLE_ROOMS if r["name"] != "Oasis"]
+    OASIS_ROOM = next((r for r in AVAILABLE_ROOMS if r["name"] == "Oasis"), {"capacity": 16})
+    
+    TOTAL_PROJECT_ROOMS = len(PROJECT_ROOMS)
+    OASIS_CAPACITY = OASIS_ROOM["capacity"]
+    
 except ImportError:
     st.error("❌ Could not import from main app. Please check file structure.")
     st.stop()
 
 # --- Historical Data Functions ---
 def get_historical_allocations(pool, start_date=None, end_date=None):
-    """Get historical allocation data with room type classification"""
+    """Get historical allocation data from archive table"""
     if not pool: return pd.DataFrame()
     conn = get_connection(pool)
     if not conn: return pd.DataFrame()
@@ -44,7 +51,7 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
                            EXTRACT(DOW FROM date) as day_of_week,
                            EXTRACT(WEEK FROM date) as week_number,
                            EXTRACT(YEAR FROM date) as year
-                    FROM weekly_allocations 
+                    FROM weekly_allocations_archive 
                     WHERE date >= %s AND date <= %s
                     ORDER BY date DESC
                 """, (start_date, end_date))
@@ -54,7 +61,7 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
                            EXTRACT(DOW FROM date) as day_of_week,
                            EXTRACT(WEEK FROM date) as week_number,
                            EXTRACT(YEAR FROM date) as year
-                    FROM weekly_allocations 
+                    FROM weekly_allocations_archive 
                     ORDER BY date DESC
                     LIMIT 1000
                 """)
@@ -79,129 +86,67 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
     finally:
         return_connection(pool, conn)
 
-def get_preferences_data(pool, weeks_back=12):
-    """Get preferences data for both project teams and Oasis users"""
-    if not pool: return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
+def get_usage_statistics(pool, weeks_back=12):
+    """Get usage statistics separated by room type"""
+    if not pool: return {}
+    
     conn = get_connection(pool)
-    if not conn: return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
+    if not conn: return {}
     
     try:
         with conn.cursor() as cur:
-            # Get project preferences
+            # Get archived allocations statistics
+            end_date = date.today()
+            start_date = end_date - timedelta(weeks=weeks_back)
+            
             cur.execute("""
-                SELECT team_name, contact_person, team_size, preferred_days, submission_time
-                FROM weekly_preferences
-                ORDER BY submission_time DESC
-            """)
-            project_rows = cur.fetchall()
+                SELECT room_name, team_name, date
+                FROM weekly_allocations_archive 
+                WHERE date >= %s AND date <= %s
+            """, (start_date, end_date))
             
-            # Get Oasis preferences  
-            cur.execute("""
-                SELECT person_name, preferred_day_1, preferred_day_2, preferred_day_3, 
-                       preferred_day_4, preferred_day_5, submission_time
-                FROM oasis_preferences
-                ORDER BY submission_time DESC
-            """)
-            oasis_rows = cur.fetchall()
+            rows = cur.fetchall()
+            if not rows:
+                return {}
             
-            project_df = pd.DataFrame(project_rows, columns=[
-                "Team", "Contact", "Size", "Preferred_Days", "Submission_Time"
-            ]) if project_rows else pd.DataFrame()
+            df = pd.DataFrame(rows, columns=["Room", "Team", "Date"])
+            df['Room_Type'] = df['Room'].apply(lambda x: 'Oasis' if x == 'Oasis' else 'Project Room')
             
-            oasis_df = pd.DataFrame(oasis_rows, columns=[
-                "Person", "Day1", "Day2", "Day3", "Day4", "Day5", "Submission_Time"
-            ]) if oasis_rows else pd.DataFrame()
+            # Calculate separated statistics
+            project_df = df[df['Room_Type'] == 'Project Room']
+            oasis_df = df[df['Room_Type'] == 'Oasis']
             
-            return {'project': project_df, 'oasis': oasis_df}
+            # Get current preferences
+            cur.execute("SELECT COUNT(*) FROM weekly_preferences")
+            current_project_prefs = cur.fetchone()[0] or 0
+            
+            cur.execute("SELECT COUNT(*) FROM oasis_preferences")
+            current_oasis_prefs = cur.fetchone()[0] or 0
+            
+            stats = {
+                'total_allocations': len(df),
+                'project_allocations': len(project_df),
+                'oasis_allocations': len(oasis_df),
+                'unique_teams': df['Team'].nunique(),
+                'unique_project_rooms': project_df['Room'].nunique() if not project_df.empty else 0,
+                'date_range': f"{df['Date'].min()} to {df['Date'].max()}" if not df.empty else "No data",
+                'current_project_preferences': current_project_prefs,
+                'current_oasis_preferences': current_oasis_prefs,
+                'most_popular_room': df['Room'].mode().iloc[0] if len(df['Room'].mode()) > 0 else "N/A",
+                'most_popular_day': pd.to_datetime(df['Date']).dt.day_name().mode().iloc[0] if not df.empty else "N/A",
+                'most_active_team': df['Team'].mode().iloc[0] if len(df['Team'].mode()) > 0 else "N/A"
+            }
+            
+            return stats
             
     except Exception as e:
-        st.error(f"Failed to fetch preferences data: {e}")
-        return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
+        st.error(f"Failed to fetch usage statistics: {e}")
+        return {}
     finally:
         return_connection(pool, conn)
 
-def get_usage_statistics(pool, weeks_back=12):
-    """Get usage statistics for analysis with room type separation"""
-    if not pool: return {}
-    
-    end_date = date.today()
-    start_date = end_date - timedelta(weeks=weeks_back)
-    df = get_historical_allocations(pool, start_date, end_date)
-    preferences = get_preferences_data(pool, weeks_back)
-    
-    if df.empty:
-        return {}
-    
-    # Separate project rooms and Oasis
-    project_df = df[df['Room_Type'] == 'Project Room']
-    oasis_df = df[df['Room_Type'] == 'Oasis']
-    
-    # Calculate statistics
-    stats = {
-        'total_allocations': len(df),
-        'project_allocations': len(project_df),
-        'oasis_allocations': len(oasis_df),
-        'unique_teams': project_df['Team'].nunique() if not project_df.empty else 0,
-        'unique_oasis_users': oasis_df['Team'].nunique() if not oasis_df.empty else 0,
-        'unique_project_rooms': project_df['Room'].nunique() if not project_df.empty else 0,
-        'date_range': f"{df['Date'].min().strftime('%Y-%m-%d')} to {df['Date'].max().strftime('%Y-%m-%d')}",
-        'most_popular_project_room': project_df['Room'].mode().iloc[0] if not project_df.empty and len(project_df['Room'].mode()) > 0 else "N/A",
-        'most_popular_day_projects': project_df['WeekDay'].mode().iloc[0] if not project_df.empty and len(project_df['WeekDay'].mode()) > 0 else "N/A",
-        'most_popular_day_oasis': oasis_df['WeekDay'].mode().iloc[0] if not oasis_df.empty and len(oasis_df['WeekDay'].mode()) > 0 else "N/A",
-        'most_active_team': project_df['Team'].mode().iloc[0] if not project_df.empty and len(project_df['Team'].mode()) > 0 else "N/A",
-        'current_project_preferences': len(preferences['project']),
-        'current_oasis_preferences': len(preferences['oasis'])
-    }
-    
-    return stats
-
-def get_room_utilization(pool, weeks_back=8):
-    """Calculate room utilization rates separated by type"""
-    if not pool: return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
-    
-    end_date = date.today()
-    start_date = end_date - timedelta(weeks=weeks_back)
-    df = get_historical_allocations(pool, start_date, end_date)
-    
-    if df.empty:
-        return {'project': pd.DataFrame(), 'oasis': pd.DataFrame()}
-    
-    # Separate project rooms and Oasis
-    project_df = df[df['Room_Type'] == 'Project Room']
-    oasis_df = df[df['Room_Type'] == 'Oasis']
-    
-    # Calculate project room utilization
-    project_usage = pd.DataFrame()
-    if not project_df.empty:
-        project_usage = project_df.groupby('Room').size().reset_index(name='Usage_Count')
-        # Assuming 4 days per week for project rooms
-        total_possible_slots = 4 * weeks_back
-        project_usage['Utilization_Rate'] = (project_usage['Usage_Count'] / total_possible_slots * 100).round(1)
-        project_usage = project_usage.sort_values('Utilization_Rate', ascending=False)
-    
-    # Calculate Oasis utilization (daily basis)
-    oasis_usage = pd.DataFrame()
-    if not oasis_df.empty:
-        # Count unique users per day for Oasis
-        oasis_daily = oasis_df.groupby(['Date'])['Team'].nunique().reset_index()
-        oasis_daily.columns = ['Date', 'Users_Count']
-        
-        # Calculate average utilization
-        oasis_capacity = 15  # Based on the capacity from rooms.json
-        avg_users = oasis_daily['Users_Count'].mean()
-        utilization_rate = (avg_users / oasis_capacity * 100).round(1)
-        
-        oasis_usage = pd.DataFrame({
-            'Room': ['Oasis'],
-            'Usage_Count': [len(oasis_df)],
-            'Avg_Daily_Users': [avg_users],
-            'Utilization_Rate': [utilization_rate]
-        })
-    
-    return {'project': project_usage, 'oasis': oasis_usage}
-
-def get_weekly_trends(pool, weeks_back=12):
-    """Get weekly allocation trends"""
+def get_daily_utilization(pool, weeks_back=8):
+    """Calculate daily utilization rates for project rooms and Oasis separately"""
     if not pool: return pd.DataFrame()
     
     end_date = date.today()
@@ -211,19 +156,59 @@ def get_weekly_trends(pool, weeks_back=12):
     if df.empty:
         return pd.DataFrame()
     
-    # Group by week
-    weekly_trends = df.groupby('WeekStart').agg({
+    # Calculate daily utilization
+    daily_stats = []
+    
+    for date_val in df['Date'].dt.date.unique():
+        day_data = df[df['Date'].dt.date == date_val]
+        
+        # Project rooms utilization
+        project_rooms_used = len(day_data[day_data['Room_Type'] == 'Project Room']['Room'].unique())
+        project_utilization = (project_rooms_used / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0
+        
+        # Oasis utilization (count people, not rooms)
+        oasis_people = len(day_data[day_data['Room_Type'] == 'Oasis'])
+        oasis_utilization = (oasis_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+        
+        daily_stats.append({
+            'Date': date_val,
+            'WeekDay': day_data.iloc[0]['WeekDay'],
+            'WeekStart': day_data.iloc[0]['WeekStart'].date(),
+            'Project_Rooms_Used': project_rooms_used,
+            'Project_Rooms_Total': TOTAL_PROJECT_ROOMS,
+            'Project_Utilization': round(project_utilization, 1),
+            'Oasis_People': oasis_people,
+            'Oasis_Capacity': OASIS_CAPACITY,
+            'Oasis_Utilization': round(oasis_utilization, 1)
+        })
+    
+    return pd.DataFrame(daily_stats).sort_values('Date', ascending=False)
+
+def get_weekly_trends(pool, weeks_back=12):
+    """Get weekly allocation trends separated by room type"""
+    if not pool: return pd.DataFrame()
+    
+    end_date = date.today()
+    start_date = end_date - timedelta(weeks=weeks_back)
+    df = get_historical_allocations(pool, start_date, end_date)
+    
+    if df.empty:
+        return pd.DataFrame()
+    
+    # Group by week and room type
+    weekly_trends = df.groupby(['WeekStart', 'Room_Type']).agg({
         'Team': 'count',
         'Room': 'nunique'
     }).reset_index()
     
-    weekly_trends.columns = ['Week', 'Total_Allocations', 'Rooms_Used']
+    weekly_trends.columns = ['Week', 'Room_Type', 'Total_Allocations', 'Rooms_Used']
     weekly_trends['Week'] = weekly_trends['Week'].dt.strftime('%Y-%m-%d')
     
     return weekly_trends
 
 # --- Streamlit App ---
 st.title("📊 Historical Data & Analytics")
+st.caption(f"📋 **Room Configuration**: {TOTAL_PROJECT_ROOMS} Project Rooms + Oasis ({OASIS_CAPACITY} people)")
 
 pool = get_db_connection_pool()
 
@@ -243,6 +228,9 @@ with st.expander("🔐 Admin Access Required"):
 # Main analytics interface
 st.header("📈 Usage Analytics Dashboard")
 
+# Data source explanation
+st.info("📊 **Data Source**: This dashboard analyzes **archived allocation data** that is preserved when weekly resets occur. Current active preferences are also shown for context.")
+
 # Date range selector
 col1, col2 = st.columns(2)
 with col1:
@@ -253,237 +241,146 @@ with col2:
 # Get data
 with st.spinner("Loading analytics data..."):
     stats = get_usage_statistics(pool, weeks_back)
-    room_util = get_room_utilization(pool, weeks_back)
+    daily_util = get_daily_utilization(pool, weeks_back)
     weekly_trends = get_weekly_trends(pool, weeks_back)
     historical_df = get_historical_allocations(pool, 
                                              date.today() - timedelta(weeks=weeks_back), 
                                              date.today())
-    preferences = get_preferences_data(pool, weeks_back)
 
 # Display key metrics
 if stats:
-    st.subheader("📊 Key Metrics Overview")
+    st.subheader("📊 Key Metrics")
     
-    # Overall metrics
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         st.metric("Total Allocations", stats['total_allocations'])
+        st.caption("From archived data")
     with col2:
-        st.metric("Current Project Preferences", stats['current_project_preferences'])
+        st.metric("Unique Teams", stats['unique_teams'])
     with col3:
-        st.metric("Current Oasis Preferences", stats['current_oasis_preferences'])
+        st.metric("Current Project Preferences", stats['current_project_preferences'])
+        st.caption("Active submissions")
     with col4:
-        st.metric("Analysis Period", f"{weeks_back} weeks")
+        st.metric("Current Oasis Preferences", stats['current_oasis_preferences'])
+        st.caption("Active submissions")
+        
+    # Allocation breakdown
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Project Room Allocations", stats['project_allocations'])
+        if stats['total_allocations'] > 0:
+            project_percentage = (stats['project_allocations'] / stats['total_allocations'] * 100)
+            st.caption(f"{project_percentage:.1f}% of total")
+    with col2:
+        st.metric("Oasis Allocations", stats['oasis_allocations'])
+        if stats['total_allocations'] > 0:
+            oasis_percentage = (stats['oasis_allocations'] / stats['total_allocations'] * 100)
+            st.caption(f"{oasis_percentage:.1f}% of total")
+    with col3:
+        st.metric("Most Active Team", stats['most_active_team'])
+
+# Daily Utilization Analysis
+if not daily_util.empty:
+    st.subheader("📈 Daily Utilization Rates")
     
-    # Separated metrics
-    st.subheader("🏢 Project Rooms vs 🌿 Oasis Breakdown")
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Project Rooms", TOTAL_PROJECT_ROOMS)
+    with col2:
+        avg_project_util = daily_util['Project_Utilization'].mean()
+        st.metric("Avg Project Room Utilization", f"{avg_project_util:.1f}%")
+    with col3:
+        st.metric("Oasis Capacity", f"{OASIS_CAPACITY} people")
+    with col4:
+        avg_oasis_util = daily_util['Oasis_Utilization'].mean()
+        st.metric("Avg Oasis Utilization", f"{avg_oasis_util:.1f}%")
+    
+    # Daily utilization by day of week
+    st.write("**Average Utilization by Day of Week**")
+    
+    # Project rooms utilization by day
+    project_daily = daily_util.groupby('WeekDay')['Project_Utilization'].mean().reset_index()
+    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    project_daily['WeekDay'] = pd.Categorical(project_daily['WeekDay'], categories=day_order, ordered=True)
+    project_daily = project_daily.sort_values('WeekDay')
+    
+    # Oasis utilization by day
+    oasis_daily = daily_util.groupby('WeekDay')['Oasis_Utilization'].mean().reset_index()
+    oasis_daily['WeekDay'] = pd.Categorical(oasis_daily['WeekDay'], categories=day_order, ordered=True)
+    oasis_daily = oasis_daily.sort_values('WeekDay')
     
     col1, col2 = st.columns(2)
+    
     with col1:
-        st.info("**Project Rooms**")
-        st.metric("Project Allocations", stats['project_allocations'])
-        st.metric("Unique Teams", stats['unique_teams'])
-        st.metric("Project Rooms Used", stats['unique_project_rooms'])
-        st.metric("Most Popular Room", stats['most_popular_project_room'])
-        st.metric("Most Popular Day", stats['most_popular_day_projects'])
-        
+        fig_project_daily = px.bar(project_daily, x='WeekDay', y='Project_Utilization',
+                                  title="Project Rooms - Daily Average Utilization",
+                                  labels={'Project_Utilization': 'Utilization (%)', 'WeekDay': 'Day'},
+                                  color='Project_Utilization',
+                                  color_continuous_scale='RdYlGn')
+        fig_project_daily.update_layout(height=400)
+        st.plotly_chart(fig_project_daily, use_container_width=True)
+    
     with col2:
-        st.success("**Oasis**")
-        st.metric("Oasis Allocations", stats['oasis_allocations'])
-        st.metric("Unique Oasis Users", stats['unique_oasis_users'])
-        st.metric("Most Popular Day", stats['most_popular_day_oasis'])
-        if stats['oasis_allocations'] > 0:
-            oasis_percentage = (stats['oasis_allocations'] / stats['total_allocations'] * 100)
-            st.metric("% of Total Usage", f"{oasis_percentage:.1f}%")
-
-# Room Utilization Charts
-st.subheader("🏢 Room Utilization Analysis")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.write("**Project Rooms Utilization**")
-    if not room_util['project'].empty:
-        fig_project = px.bar(room_util['project'], x='Room', y='Utilization_Rate',
-                            title=f"Project Room Utilization Over Last {weeks_back} Weeks",
-                            labels={'Utilization_Rate': 'Utilization (%)', 'Room': 'Room Name'},
-                            color='Utilization_Rate',
-                            color_continuous_scale='RdYlGn')
-        fig_project.update_layout(height=400)
-        st.plotly_chart(fig_project, use_container_width=True)
-        
-        st.dataframe(room_util['project'], use_container_width=True, hide_index=True)
-    else:
-        st.info("No project room data available for the selected period.")
-
-with col2:
-    st.write("**Oasis Utilization**")
-    if not room_util['oasis'].empty:
-        oasis_data = room_util['oasis'].iloc[0]
-        
-        # Create a gauge-like visualization for Oasis
-        fig_oasis = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = oasis_data['Utilization_Rate'],
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Oasis Utilization %"},
-            delta = {'reference': 75},
-            gauge = {'axis': {'range': [None, 100]},
-                     'bar': {'color': "darkblue"},
-                     'steps': [
-                         {'range': [0, 50], 'color': "lightgray"},
-                         {'range': [50, 80], 'color': "yellow"},
-                         {'range': [80, 100], 'color': "red"}],
-                     'threshold': {'line': {'color': "red", 'width': 4},
-                                   'thickness': 0.75, 'value': 90}}))
-        
-        fig_oasis.update_layout(height=300)
-        st.plotly_chart(fig_oasis, use_container_width=True)
-        
-        st.dataframe(room_util['oasis'][['Usage_Count', 'Avg_Daily_Users', 'Utilization_Rate']], 
-                    use_container_width=True, hide_index=True)
-    else:
-        st.info("No Oasis data available for the selected period.")
-
-# Weekly Trends
-if not weekly_trends.empty:
-    st.subheader("📈 Weekly Allocation Trends")
+        fig_oasis_daily = px.bar(oasis_daily, x='WeekDay', y='Oasis_Utilization',
+                                title="Oasis - Daily Average Utilization",
+                                labels={'Oasis_Utilization': 'Utilization (%)', 'WeekDay': 'Day'},
+                                color='Oasis_Utilization',
+                                color_continuous_scale='Blues')
+        fig_oasis_daily.update_layout(height=400)
+        st.plotly_chart(fig_oasis_daily, use_container_width=True)
     
-    fig_trends = go.Figure()
-    fig_trends.add_trace(go.Scatter(x=weekly_trends['Week'], y=weekly_trends['Total_Allocations'],
-                                    mode='lines+markers', name='Total Allocations'))
-    fig_trends.add_trace(go.Scatter(x=weekly_trends['Week'], y=weekly_trends['Rooms_Used'],
-                                    mode='lines+markers', name='Rooms Used', yaxis='y2'))
+    # Weekly trends
+    st.write("**Weekly Utilization Trends**")
+    weekly_util = daily_util.groupby('WeekStart').agg({
+        'Project_Utilization': 'mean',
+        'Oasis_Utilization': 'mean'
+    }).reset_index()
+    weekly_util['WeekStart'] = pd.to_datetime(weekly_util['WeekStart'])
     
-    fig_trends.update_layout(
-        title=f"Allocation Trends Over Last {weeks_back} Weeks",
+    fig_weekly_util = go.Figure()
+    fig_weekly_util.add_trace(go.Scatter(
+        x=weekly_util['WeekStart'], 
+        y=weekly_util['Project_Utilization'],
+        mode='lines+markers', 
+        name=f'Project Rooms (/{TOTAL_PROJECT_ROOMS})',
+        line=dict(color='#ff7f0e')
+    ))
+    fig_weekly_util.add_trace(go.Scatter(
+        x=weekly_util['WeekStart'], 
+        y=weekly_util['Oasis_Utilization'],
+        mode='lines+markers', 
+        name=f'Oasis (/{OASIS_CAPACITY} people)',
+        line=dict(color='#1f77b4')
+    ))
+    
+    fig_weekly_util.update_layout(
+        title="Weekly Average Utilization Trends",
         xaxis_title="Week Starting",
-        yaxis_title="Total Allocations",
-        yaxis2=dict(title="Rooms Used", overlaying='y', side='right'),
+        yaxis_title="Utilization (%)",
         height=400
     )
-    st.plotly_chart(fig_trends, use_container_width=True)
-
-# Day of Week Analysis
-if not historical_df.empty:
-    st.subheader("📅 Day of Week Popularity")
+    st.plotly_chart(fig_weekly_util, use_container_width=True)
     
-    day_popularity = historical_df['WeekDay'].value_counts().reset_index()
-    day_popularity.columns = ['Day', 'Count']
-    
-    # Reorder by weekday
-    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-    day_popularity['Day'] = pd.Categorical(day_popularity['Day'], categories=day_order, ordered=True)
-    day_popularity = day_popularity.sort_values('Day')
-    
-    fig_days = px.pie(day_popularity, values='Count', names='Day',
-                      title="Allocation Distribution by Day of Week")
-    st.plotly_chart(fig_days, use_container_width=True)
+    # Detailed daily utilization table
+    with st.expander("📋 View Detailed Daily Utilization Data"):
+        display_df = daily_util[['Date', 'WeekDay', 'Project_Rooms_Used', 'Project_Utilization', 
+                                'Oasis_People', 'Oasis_Utilization']].copy()
+        display_df.columns = ['Date', 'Day', 'Rooms Used', 'Project %', 'Oasis People', 'Oasis %']
+        st.dataframe(display_df, use_container_width=True)
 
 # Team Activity Analysis
 if not historical_df.empty:
     st.subheader("👥 Most Active Teams")
     
-    project_df = historical_df[historical_df['Room_Type'] == 'Project Room']
-    oasis_df = historical_df[historical_df['Room_Type'] == 'Oasis']
+    team_activity = historical_df['Team'].value_counts().head(10).reset_index()
+    team_activity.columns = ['Team', 'Allocations']
     
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Most Active Project Teams**")
-        if not project_df.empty:
-            team_activity = project_df['Team'].value_counts().head(10).reset_index()
-            team_activity.columns = ['Team', 'Allocations']
-            
-            fig_teams = px.bar(team_activity, x='Allocations', y='Team', orientation='h',
-                              title="Top 10 Most Active Project Teams",
-                              labels={'Allocations': 'Number of Allocations', 'Team': 'Team Name'})
-            fig_teams.update_layout(height=400)
-            st.plotly_chart(fig_teams, use_container_width=True)
-        else:
-            st.info("No project team data available.")
-            
-    with col2:
-        st.write("**Most Active Oasis Users**")
-        if not oasis_df.empty:
-            oasis_activity = oasis_df['Team'].value_counts().head(10).reset_index()
-            oasis_activity.columns = ['User', 'Allocations']
-            
-            fig_oasis_users = px.bar(oasis_activity, x='Allocations', y='User', orientation='h',
-                                    title="Top 10 Most Active Oasis Users",
-                                    labels={'Allocations': 'Number of Allocations', 'User': 'User Name'})
-            fig_oasis_users.update_layout(height=400)
-            st.plotly_chart(fig_oasis_users, use_container_width=True)
-        else:
-            st.info("No Oasis user data available.")
-
-# Current Status and Data Management
-st.subheader("📋 Current Data Status & Management")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.write("**Current Preferences (Active)**")
-    if not preferences['project'].empty:
-        st.info(f"🏢 **Project Teams**: {len(preferences['project'])} active preferences")
-        with st.expander("View Project Preferences"):
-            st.dataframe(preferences['project'][['Team', 'Contact', 'Size', 'Preferred_Days']], 
-                        use_container_width=True, hide_index=True)
-    else:
-        st.warning("No active project preferences")
-        
-    if not preferences['oasis'].empty:
-        st.info(f"🌿 **Oasis Users**: {len(preferences['oasis'])} active preferences")
-        with st.expander("View Oasis Preferences"):
-            st.dataframe(preferences['oasis'][['Person', 'Day1', 'Day2', 'Day3', 'Day4', 'Day5']], 
-                        use_container_width=True, hide_index=True)
-    else:
-        st.warning("No active Oasis preferences")
-
-with col2:
-    st.write("**Data Management Info**")
-    st.info("""
-    **How Data Transitions Work:**
-    
-    🔄 **Weekly Cycle:**
-    - Preferences collected during submission period
-    - Allocations generated from preferences
-    - Data archived before deletion (backup system)
-    
-    🗃️ **Backup System:**
-    - All deletions are backed up to archive tables
-    - Historical data preserved for analysis
-    - Admin can restore if needed
-    
-    📊 **Analytics:**
-    - Project rooms and Oasis analyzed separately
-    - Utilization calculated differently for each type
-    - Current preferences vs historical allocations
-    """)
-
-    if st.button("🔍 Check Archive Tables"):
-        # Check if archive tables have data
-        conn = get_connection(pool)
-        if conn:
-            try:
-                with conn.cursor() as cur:
-                    cur.execute("SELECT COUNT(*) FROM weekly_preferences_archive")
-                    archived_prefs = cur.fetchone()[0]
-                    cur.execute("SELECT COUNT(*) FROM oasis_preferences_archive")
-                    archived_oasis = cur.fetchone()[0]
-                    cur.execute("SELECT COUNT(*) FROM weekly_allocations_archive")
-                    archived_allocs = cur.fetchone()[0]
-                    
-                    st.success(f"""
-                    **Archive Status:**
-                    - Project Preferences: {archived_prefs} archived
-                    - Oasis Preferences: {archived_oasis} archived
-                    - Allocations: {archived_allocs} archived
-                    """)
-            except Exception as e:
-                st.error(f"Error checking archives: {e}")
-            finally:
-                return_connection(pool, conn)
+    fig_teams = px.bar(team_activity, x='Allocations', y='Team', orientation='h',
+                       title="Top 10 Most Active Teams",
+                       labels={'Allocations': 'Number of Allocations', 'Team': 'Team Name'})
+    fig_teams.update_layout(height=400)
+    st.plotly_chart(fig_teams, use_container_width=True)
 
 # Historical Data Browser
 st.subheader("🗓️ Historical Data Browser")
@@ -503,20 +400,41 @@ if not historical_df.empty:
         if not week_data.empty:
             st.write(f"**Showing allocations for week of {selected_week}**")
             
-            # Create a pivot table for better visualization
-            pivot_data = week_data.pivot_table(
-                index='Room', 
-                columns='WeekDay', 
-                values='Team', 
-                aggfunc='first',
-                fill_value='Vacant'
-            )
+            # Separate project and oasis data
+            project_data = week_data[week_data['Room_Type'] == 'Project Room']
+            oasis_data = week_data[week_data['Room_Type'] == 'Oasis']
             
-            # Reorder columns by weekday
-            day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
-            pivot_data = pivot_data.reindex(columns=[d for d in day_order if d in pivot_data.columns])
+            col1, col2 = st.columns(2)
             
-            st.dataframe(pivot_data, use_container_width=True)
+            with col1:
+                st.write("**Project Rooms**")
+                if not project_data.empty:
+                    # Create a pivot table for better visualization
+                    pivot_data = project_data.pivot_table(
+                        index='Room', 
+                        columns='WeekDay', 
+                        values='Team', 
+                        aggfunc='first',
+                        fill_value='Vacant'
+                    )
+                    
+                    # Reorder columns by weekday
+                    day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+                    pivot_data = pivot_data.reindex(columns=[d for d in day_order if d in pivot_data.columns])
+                    
+                    st.dataframe(pivot_data, use_container_width=True)
+                else:
+                    st.info("No project room allocations for this week.")
+            
+            with col2:
+                st.write("**Oasis**")
+                if not oasis_data.empty:
+                    oasis_summary = oasis_data.groupby('WeekDay')['Team'].count().reset_index()
+                    oasis_summary.columns = ['Day', 'People']
+                    oasis_summary['Utilization'] = (oasis_summary['People'] / OASIS_CAPACITY * 100).round(1)
+                    st.dataframe(oasis_summary, use_container_width=True)
+                else:
+                    st.info("No Oasis allocations for this week.")
         else:
             st.info("No allocations found for the selected week.")
 
@@ -529,9 +447,9 @@ if not historical_df.empty:
     with col1:
         if st.button("📊 Export Analytics Summary"):
             summary_data = {
-                'Metric': ['Total Allocations', 'Unique Teams', 'Unique Rooms', 'Most Popular Room', 'Most Popular Day'],
-                'Value': [stats['total_allocations'], stats['unique_teams'], stats['unique_rooms'], 
-                         stats['most_popular_room'], stats['most_popular_day']]
+                'Metric': ['Total Allocations', 'Project Allocations', 'Oasis Allocations', 'Unique Teams', 'Most Active Team'],
+                'Value': [stats['total_allocations'], stats['project_allocations'], stats['oasis_allocations'],
+                         stats['unique_teams'], stats['most_active_team']]
             }
             summary_df = pd.DataFrame(summary_data)
             csv = summary_df.to_csv(index=False)
@@ -544,7 +462,7 @@ if not historical_df.empty:
     
     with col2:
         if st.button("📋 Export Raw Historical Data"):
-            export_df = historical_df[['Date', 'Team', 'Room', 'WeekDay']].copy()
+            export_df = historical_df[['Date', 'Team', 'Room', 'WeekDay', 'Room_Type']].copy()
             export_df['Date'] = export_df['Date'].dt.strftime('%Y-%m-%d')
             csv = export_df.to_csv(index=False)
             st.download_button(
@@ -560,37 +478,37 @@ if stats:
     
     insights = []
     
-    # Project room insights
-    if not room_util['project'].empty:
-        high_util_rooms = room_util['project'][room_util['project']['Utilization_Rate'] > 75]
-        low_util_rooms = room_util['project'][room_util['project']['Utilization_Rate'] < 25]
+    # Utilization insights
+    if not daily_util.empty:
+        avg_project_util = daily_util['Project_Utilization'].mean()
+        avg_oasis_util = daily_util['Oasis_Utilization'].mean()
         
-        if not high_util_rooms.empty:
-            insights.append(f"🔥 **High Demand Project Rooms**: {', '.join(high_util_rooms['Room'].tolist())} are heavily utilized (>75%)")
-        
-        if not low_util_rooms.empty:
-            insights.append(f"📉 **Underutilized Project Rooms**: {', '.join(low_util_rooms['Room'].tolist())} are underutilized (<25%)")
-    
-    # Oasis insights
-    if not room_util['oasis'].empty:
-        oasis_util = room_util['oasis'].iloc[0]['Utilization_Rate']
-        if oasis_util > 80:
-            insights.append(f"🌿 **Oasis High Demand**: {oasis_util:.1f}% utilization - consider expanding capacity")
-        elif oasis_util < 30:
-            insights.append(f"🌿 **Oasis Low Usage**: {oasis_util:.1f}% utilization - promote Oasis benefits")
+        if avg_project_util > 80:
+            insights.append(f"🔥 **High Project Room Demand**: {avg_project_util:.1f}% average utilization - rooms are in high demand")
+        elif avg_project_util < 30:
+            insights.append(f"📉 **Low Project Room Usage**: {avg_project_util:.1f}% average utilization - rooms are underutilized")
         else:
-            insights.append(f"🌿 **Oasis Balanced**: {oasis_util:.1f}% utilization - healthy usage level")
+            insights.append(f"✅ **Balanced Project Room Usage**: {avg_project_util:.1f}% average utilization")
+            
+        if avg_oasis_util > 80:
+            insights.append(f"🌿 **Oasis High Demand**: {avg_oasis_util:.1f}% average utilization - consider expanding capacity")
+        elif avg_oasis_util < 30:
+            insights.append(f"🌿 **Oasis Low Usage**: {avg_oasis_util:.1f}% average utilization - promote Oasis benefits")
+        else:
+            insights.append(f"🌿 **Oasis Balanced Usage**: {avg_oasis_util:.1f}% average utilization")
     
     # Day preferences insights
     if not historical_df.empty:
         project_df = historical_df[historical_df['Room_Type'] == 'Project Room']
         oasis_df = historical_df[historical_df['Room_Type'] == 'Oasis']
         
-        if not project_df.empty and stats['most_popular_day_projects']:
-            insights.append(f"📅 **Project Peak Day**: {stats['most_popular_day_projects']} is most requested for project rooms")
+        if not project_df.empty:
+            most_popular_project_day = project_df['WeekDay'].mode().iloc[0] if len(project_df['WeekDay'].mode()) > 0 else "N/A"
+            insights.append(f"📅 **Project Peak Day**: {most_popular_project_day} is most requested for project rooms")
             
-        if not oasis_df.empty and stats['most_popular_day_oasis']:
-            insights.append(f"📅 **Oasis Peak Day**: {stats['most_popular_day_oasis']} is most popular for Oasis")
+        if not oasis_df.empty:
+            most_popular_oasis_day = oasis_df['WeekDay'].mode().iloc[0] if len(oasis_df['WeekDay'].mode()) > 0 else "N/A"
+            insights.append(f"📅 **Oasis Peak Day**: {most_popular_oasis_day} is most popular for Oasis")
     
     # Preference vs allocation insights
     if stats['current_project_preferences'] == 0:
@@ -604,9 +522,12 @@ if stats:
         project_ratio = (stats['project_allocations'] / stats['total_allocations']) * 100
         oasis_ratio = (stats['oasis_allocations'] / stats['total_allocations']) * 100
         insights.append(f"⚖️ **Usage Split**: {project_ratio:.1f}% Project Rooms, {oasis_ratio:.1f}% Oasis")
+
+    # Weekly transition insights
+    insights.append("🔄 **Weekly Process**: Data is archived when allocations are reset for new weeks, preserving historical trends")
     
     for insight in insights:
         st.info(insight)
 
 else:
-    st.info("No historical data available. Allocations will appear here once the system has been used.")
+    st.info("No historical data available. Allocations will appear here once the system has been used and weekly transitions have occurred.")
