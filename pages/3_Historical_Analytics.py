@@ -616,11 +616,21 @@ ui_week_dates = get_ui_week_dates()
 # Debug section to show actual data vs UI comparison
 with st.expander("🐛 Debug: Raw Data Analysis", expanded=False):
     st.write("**Raw Current Week Oasis Data vs Analytics Calculation**")
+    
+    # Show UI week dates being used
+    st.write(f"**UI Week Dates (from session state)**: {[d.strftime('%Y-%m-%d (%A)') for d in ui_week_dates]}")
+    
     if not current_df.empty:
         current_oasis_raw = current_df[current_df['Room_Type'] == 'Oasis'].copy()
         if not current_oasis_raw.empty:
             st.write(f"**Total Oasis records in current week**: {len(current_oasis_raw)}")
             st.write(f"**OASIS_CAPACITY**: {OASIS_CAPACITY}")
+            
+            # Show which dates are in the raw data vs UI dates
+            raw_dates = sorted(current_oasis_raw['Date'].dt.date.unique())
+            ui_dates = [d.date() for d in ui_week_dates]
+            st.write(f"**Raw data dates**: {[d.strftime('%Y-%m-%d') for d in raw_dates]}")
+            st.write(f"**UI dates**: {[d.strftime('%Y-%m-%d') for d in ui_dates]}")
             
             # Show daily breakdown calculation that matches UI
             daily_counts_debug = current_oasis_raw.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
