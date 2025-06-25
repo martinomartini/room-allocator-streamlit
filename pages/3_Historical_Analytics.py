@@ -378,10 +378,18 @@ def get_current_oasis_utilization(current_df):
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
+    # Filter to only current week (most recent week in the data)
+    if not oasis_df.empty:
+        latest_week = oasis_df['WeekStart'].max()
+        oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
+    
     # Count unique people per day
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
+    
+    # Sort by date to show in chronological order
+    daily_counts = daily_counts.sort_values('Date')
     
     # Calculate average utilization
     avg_utilization = daily_counts['Utilization'].mean()
@@ -541,11 +549,13 @@ if not current_df.empty:
         with col2:
             st.metric("Oasis Utilization", f"{current_oasis_util:.1f}%", 
                      f"Avg daily attendance")
-            
-            # Show daily breakdown for current week
+              # Show daily breakdown for current week
             if not current_oasis_daily.empty:
                 with st.expander("📊 Current Week Daily Breakdown"):
-                    st.dataframe(current_oasis_daily[['WeekDay', 'People_Count', 'Utilization']], 
+                    # Add a formatted date column for clarity
+                    display_df = current_oasis_daily.copy()
+                    display_df['Date_Formatted'] = display_df['Date'].dt.strftime('%Y-%m-%d')
+                    st.dataframe(display_df[['Date_Formatted', 'WeekDay', 'People_Count', 'Utilization']], 
                                use_container_width=True, hide_index=True)
     
     # Current week schedule
