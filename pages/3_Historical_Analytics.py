@@ -221,12 +221,11 @@ def get_room_utilization(pool, weeks_back=8):
         # Assuming 4 days per week for project rooms
         total_possible_slots = 4 * weeks_back
         project_usage['Utilization_Rate'] = (project_usage['Usage_Count'] / total_possible_slots * 100).round(1)
-        project_usage = project_usage.sort_values('Utilization_Rate', ascending=False)
-      # Calculate Oasis utilization (daily basis) - count actual confirmed attendees per day
+        project_usage = project_usage.sort_values('Utilization_Rate', ascending=False)      # Calculate Oasis utilization (daily basis) - count unique people per day (matches UI logic)
     oasis_usage = pd.DataFrame()
     if not oasis_confirmed_df.empty:
-        # Count actual confirmed attendees per day for Oasis (each person counted once per day)
-        oasis_daily = oasis_confirmed_df.groupby(['Date'])['Team'].count().reset_index()
+        # Count unique people per day for Oasis (matches the "used_spots" calculation in the UI)
+        oasis_daily = oasis_confirmed_df.groupby(['Date'])['Team'].nunique().reset_index()
         oasis_daily.columns = ['Date', 'Attendees_Count']
         
         # Calculate daily utilization rates
@@ -448,14 +447,13 @@ def get_current_oasis_utilization(current_df):
     
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
-    
-    # Filter to only current week (most recent week in the data)
+      # Filter to only current week (most recent week in the data)
     if not oasis_df.empty:
         latest_week = oasis_df['WeekStart'].max()
         oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
     
     # Count unique people per day (only confirmed attendees)
-    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
+    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
     
@@ -477,15 +475,14 @@ def get_corrected_oasis_utilization(df, weeks_back=8):
     
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
-    
-    # Filter to only confirmed Oasis entries (people who actually checked the box)
+      # Filter to only confirmed Oasis entries (people who actually checked the box)
     oasis_df = oasis_df[oasis_df['Confirmed'] == True]
     
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
     # Count unique people per day (only confirmed attendees)
-    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].count().reset_index()
+    daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
     
@@ -657,8 +654,7 @@ if not current_df.empty:
                                use_container_width=True, hide_index=True)
     
     # Current week schedule
-    with st.expander("📋 View Current Week Schedule"):
-        # Separate project and oasis data
+    with st.expander("📋 View Current Week Schedule"):        # Separate project and oasis data
         current_project = current_df[current_df['Room_Type'] == 'Project Room']
         current_oasis = current_df[current_df['Room_Type'] == 'Oasis']
         
@@ -683,7 +679,7 @@ if not current_df.empty:
         with col2:
             st.write("**Oasis**")
             if not current_oasis.empty:
-                oasis_current = current_oasis.groupby('WeekDay')['Team'].count().reset_index()
+                oasis_current = current_oasis.groupby('WeekDay')['Team'].nunique().reset_index()
                 oasis_current.columns = ['Day', 'People']
                 oasis_current['Utilization'] = (oasis_current['People'] / OASIS_CAPACITY * 100).round(1)
                 st.dataframe(oasis_current, use_container_width=True)
