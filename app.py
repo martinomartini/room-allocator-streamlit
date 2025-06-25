@@ -841,8 +841,12 @@ with st.form("oasis_add_form_main"):
                                 st.warning(f"⚠️ Oasis is full on {day_str}. Could not add {name_clean}.")
                                 added_to_all_selected = False
                             else:
-                                # Insert unconfirmed allocation (needs matrix confirmation)  
-                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed) VALUES (%s, 'Oasis', %s, %s)", (name_clean, date_obj, False))
+                                # Insert allocation - try with confirmed column first, fallback if column doesn't exist
+                                try:
+                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed) VALUES (%s, 'Oasis', %s, %s)", (name_clean, date_obj, False))
+                                except psycopg2.errors.UndefinedColumn:
+                                    # Fallback for when confirmed column doesn't exist yet
+                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, 'Oasis', %s)", (name_clean, date_obj))
                         conn_adhoc.commit()
                         if added_to_all_selected and adhoc_oasis_days:
                             st.success(f"✅ {name_clean} added to Oasis for selected day(s)! Please confirm attendance via the matrix below.")
@@ -924,14 +928,21 @@ else:
         if st.button("💾 Save Oasis Matrix Changes", key="btn_save_oasis_matrix_changes"):
             try:
                 with conn_matrix.cursor() as cur:
+                    # Check if confirmed column exists
+                    cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'weekly_allocations' AND column_name = 'confirmed'")
+                    has_confirmed_col = cur.fetchone() is not None
+                    
                     # Delete existing Oasis allocations for this week
                     cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis' AND team_name != 'Niek' AND date >= %s AND date <= %s", (oasis_overview_monday_display, oasis_overview_days_dates[-1]))
                     if "Niek" in edited_matrix.index: 
                         cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis' AND team_name = 'Niek' AND date >= %s AND date <= %s", (oasis_overview_monday_display, oasis_overview_days_dates[-1]))
                         for day_idx, day_col_name in enumerate(oasis_overview_day_names):
                             if edited_matrix.at["Niek", day_col_name]:
-                                # Insert confirmed allocation for Niek
-                                cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", ("Niek", "Oasis", oasis_overview_monday_display + timedelta(days=day_idx), True))
+                                # Insert allocation for Niek
+                                if has_confirmed_col:
+                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", ("Niek", "Oasis", oasis_overview_monday_display + timedelta(days=day_idx), True))
+                                else:
+                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", ("Niek", "Oasis", oasis_overview_monday_display + timedelta(days=day_idx)))
                     
                     occupied_counts_per_day = {day_col: 0 for day_col in oasis_overview_day_names}
                     if "Niek" in edited_matrix.index: 
@@ -945,14 +956,20 @@ else:
                             if edited_matrix.at[person_name_matrix, day_col_name]: 
                                 if occupied_counts_per_day[day_col_name] < oasis_capacity:
                                     date_obj_alloc = oasis_overview_monday_display + timedelta(days=day_idx)
-                                    # Insert confirmed allocation (matrix confirms attendance)
-                                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", (person_name_matrix, "Oasis", date_obj_alloc, True))
+                                    # Insert allocation (confirmed if column exists)                                    if has_confirmed_col:
+                                        cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", (person_name_matrix, "Oasis", date_obj_alloc, True))
+                                    else:
+                                        cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (person_name_matrix, "Oasis", date_obj_alloc))
                                     occupied_counts_per_day[day_col_name] += 1
                                 else:
                                     st.warning(f"⚠️ {person_name_matrix} could not be added to Oasis on {day_col_name}: capacity reached.")
                                     
                     conn_matrix.commit()
-                    st.success("✅ Oasis Matrix saved successfully! All entries marked as confirmed.")
+                    if has_confirmed_col:
+                        st.success("✅ Oasis Matrix saved successfully! All entries marked as confirmed.")
+                    else:
+                        st.success("✅ Oasis Matrix saved successfully!")
+                        st.info("💡 To enable attendance confirmation tracking, please run the SQL commands in backup_tables.sql on your database.")
                     st.rerun()
             except Exception as e_matrix_save:
                 st.error(f"❌ Failed to save Oasis Matrix: {e_matrix_save}")

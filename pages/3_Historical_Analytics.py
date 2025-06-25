@@ -45,26 +45,59 @@ def get_historical_allocations(pool, start_date=None, end_date=None):
     
     try:
         with conn.cursor() as cur:
-            if start_date and end_date:                cur.execute("""
-                    SELECT team_name, room_name, date, 
-                           EXTRACT(DOW FROM date) as day_of_week,
-                           EXTRACT(WEEK FROM date) as week_number,
-                           EXTRACT(YEAR FROM date) as year,
-                           COALESCE(confirmed, FALSE) as confirmed
-                    FROM weekly_allocations_archive 
-                    WHERE date >= %s AND date <= %s
-                    ORDER BY date DESC
-                """, (start_date, end_date))
-            else:                cur.execute("""
-                    SELECT team_name, room_name, date,
-                           EXTRACT(DOW FROM date) as day_of_week,
-                           EXTRACT(WEEK FROM date) as week_number,
-                           EXTRACT(YEAR FROM date) as year,
-                           COALESCE(confirmed, FALSE) as confirmed
-                    FROM weekly_allocations_archive 
-                    ORDER BY date DESC
-                    LIMIT 1000
-                """)
+            # Check if confirmed column exists
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'weekly_allocations_archive' AND column_name = 'confirmed'
+            """)
+            has_confirmed_col = cur.fetchone() is not None
+            
+            if start_date and end_date:
+                if has_confirmed_col:
+                    cur.execute("""
+                        SELECT team_name, room_name, date, 
+                               EXTRACT(DOW FROM date) as day_of_week,
+                               EXTRACT(WEEK FROM date) as week_number,
+                               EXTRACT(YEAR FROM date) as year,
+                               COALESCE(confirmed, FALSE) as confirmed
+                        FROM weekly_allocations_archive 
+                        WHERE date >= %s AND date <= %s
+                        ORDER BY date DESC
+                    """, (start_date, end_date))
+                else:
+                    cur.execute("""
+                        SELECT team_name, room_name, date, 
+                               EXTRACT(DOW FROM date) as day_of_week,
+                               EXTRACT(WEEK FROM date) as week_number,
+                               EXTRACT(YEAR FROM date) as year,
+                               TRUE as confirmed
+                        FROM weekly_allocations_archive 
+                        WHERE date >= %s AND date <= %s
+                        ORDER BY date DESC
+                    """, (start_date, end_date))
+            else:
+                if has_confirmed_col:
+                    cur.execute("""
+                        SELECT team_name, room_name, date,
+                               EXTRACT(DOW FROM date) as day_of_week,
+                               EXTRACT(WEEK FROM date) as week_number,
+                               EXTRACT(YEAR FROM date) as year,
+                               COALESCE(confirmed, FALSE) as confirmed
+                        FROM weekly_allocations_archive 
+                        ORDER BY date DESC
+                        LIMIT 1000
+                    """)
+                else:
+                    cur.execute("""
+                        SELECT team_name, room_name, date,
+                               EXTRACT(DOW FROM date) as day_of_week,
+                               EXTRACT(WEEK FROM date) as week_number,
+                               EXTRACT(YEAR FROM date) as year,
+                               TRUE as confirmed
+                        FROM weekly_allocations_archive 
+                        ORDER BY date DESC
+                        LIMIT 1000
+                    """)
             
             rows = cur.fetchall()
             if not rows:
@@ -285,14 +318,33 @@ def get_current_allocations(pool):
     
     try:
         with conn.cursor() as cur:
+            # Check if confirmed column exists
             cur.execute("""
-                SELECT team_name, room_name, date, 
-                       EXTRACT(DOW FROM date) as day_of_week,
-                       EXTRACT(WEEK FROM date) as week_number,
-                       EXTRACT(YEAR FROM date) as year,
-                       COALESCE(confirmed, FALSE) as confirmed
-                FROM weekly_allocations                ORDER BY date DESC
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'weekly_allocations' AND column_name = 'confirmed'
             """)
+            has_confirmed_col = cur.fetchone() is not None
+            
+            if has_confirmed_col:
+                cur.execute("""
+                    SELECT team_name, room_name, date, 
+                           EXTRACT(DOW FROM date) as day_of_week,
+                           EXTRACT(WEEK FROM date) as week_number,
+                           EXTRACT(YEAR FROM date) as year,
+                           COALESCE(confirmed, FALSE) as confirmed
+                    FROM weekly_allocations 
+                    ORDER BY date DESC
+                """)
+            else:
+                cur.execute("""
+                    SELECT team_name, room_name, date, 
+                           EXTRACT(DOW FROM date) as day_of_week,
+                           EXTRACT(WEEK FROM date) as week_number,
+                           EXTRACT(YEAR FROM date) as year,
+                           TRUE as confirmed
+                    FROM weekly_allocations 
+                    ORDER BY date DESC
+                """)
             
             rows = cur.fetchall()
             if not rows:
@@ -444,6 +496,23 @@ def get_corrected_oasis_utilization(df, weeks_back=8):
 
 # --- Streamlit App ---
 st.title("📊 Historical Data & Analytics")
+
+# Check if confirmed column exists and show setup message if needed
+pool = get_db_connection_pool()
+if pool:
+    conn = get_connection(pool)
+    if conn:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT column_name FROM information_schema.columns WHERE table_name = 'weekly_allocations' AND column_name = 'confirmed'")
+                has_confirmed_col = cur.fetchone() is not None
+                
+                if not has_confirmed_col:
+                    st.warning("⚠️ **Database Setup Required**: The confirmation tracking feature is not yet enabled. To track confirmed vs unconfirmed Oasis attendance:")
+                    st.info("1. Run the SQL commands in `backup_tables.sql` on your Supabase database\n2. This will add confirmation tracking to distinguish between allocated and confirmed attendees")
+                    st.markdown("---")
+        finally:
+            return_connection(pool, conn)
 
 pool = get_db_connection_pool()
 
