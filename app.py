@@ -287,6 +287,118 @@ def insert_oasis(pool, person, selected_days):
     finally: return_connection(pool, conn)
 
 # -----------------------------------------------------
+# Archive/Backup Functions for Data Preservation
+# -----------------------------------------------------
+def create_archive_tables(pool):
+    """Create archive tables if they don't exist"""
+    if not pool: return
+    conn = get_connection(pool)
+    if not conn: return
+    try:
+        with conn.cursor() as cur:
+            # Create archive tables
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_preferences_archive (
+                    archive_id SERIAL PRIMARY KEY,
+                    original_id INTEGER,
+                    team_name VARCHAR(255),
+                    contact_person VARCHAR(255),
+                    team_size INTEGER,
+                    preferred_days VARCHAR(100),
+                    submission_time TIMESTAMP,
+                    deleted_at TIMESTAMP DEFAULT NOW(),
+                    deleted_by VARCHAR(255),
+                    deletion_reason TEXT
+                )
+            """)
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS oasis_preferences_archive (
+                    archive_id SERIAL PRIMARY KEY,
+                    original_id INTEGER,
+                    person_name VARCHAR(255),
+                    preferred_day_1 VARCHAR(20),
+                    preferred_day_2 VARCHAR(20),
+                    preferred_day_3 VARCHAR(20),
+                    preferred_day_4 VARCHAR(20),
+                    preferred_day_5 VARCHAR(20),
+                    submission_time TIMESTAMP,
+                    deleted_at TIMESTAMP DEFAULT NOW(),
+                    deleted_by VARCHAR(255),
+                    deletion_reason TEXT
+                )
+            """)
+            
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS weekly_allocations_archive (
+                    archive_id SERIAL PRIMARY KEY,
+                    original_id INTEGER,
+                    team_name VARCHAR(255),
+                    room_name VARCHAR(255),
+                    date DATE,
+                    allocated_at TIMESTAMP,
+                    deleted_at TIMESTAMP DEFAULT NOW(),
+                    deleted_by VARCHAR(255),
+                    deletion_reason TEXT
+                )
+            """)
+            conn.commit()
+    except Exception as e:
+        st.warning(f"Archive tables creation failed (may already exist): {e}")
+        if conn: conn.rollback()
+    finally:
+        return_connection(pool, conn)
+
+def backup_weekly_preferences(pool, deleted_by="admin", deletion_reason="Manual deletion"):
+    """Backup weekly preferences before deletion"""
+    if not pool: return False
+    conn = get_connection(pool)
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO weekly_preferences_archive 
+                (team_name, contact_person, team_size, preferred_days, submission_time, deleted_by, deletion_reason)
+                SELECT team_name, contact_person, team_size, preferred_days, submission_time, %s, %s
+                FROM weekly_preferences
+            """, (deleted_by, deletion_reason))
+            conn.commit()
+            return True
+    except Exception as e:
+        st.warning(f"Backup failed: {e}")
+        if conn: conn.rollback()
+        return False
+    finally:
+        return_connection(pool, conn)
+
+def backup_oasis_preferences(pool, deleted_by="admin", deletion_reason="Manual deletion"):
+    """Backup oasis preferences before deletion"""
+    if not pool: return False
+    conn = get_connection(pool)
+    if not conn: return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO oasis_preferences_archive 
+                (person_name, preferred_day_1, preferred_day_2, preferred_day_3, preferred_day_4, preferred_day_5, 
+                 submission_time, deleted_by, deletion_reason)
+                SELECT person_name, preferred_day_1, preferred_day_2, preferred_day_3, preferred_day_4, preferred_day_5,
+                       submission_time, %s, %s
+                FROM oasis_preferences
+            """, (deleted_by, deletion_reason))
+            conn.commit()
+            return True
+    except Exception as e:
+        st.warning(f"Backup failed: {e}")
+        if conn: conn.rollback()
+        return False
+    finally:
+        return_connection(pool, conn)
+
+# Initialize archive tables
+create_archive_tables(pool)
+
+# -----------------------------------------------------
 # Streamlit App UI
 # -----------------------------------------------------
 st.title("📅 Weekly Room Allocator")
@@ -476,22 +588,51 @@ with st.expander("🔐 Admin Controls"):
                         conn_reset_pra.commit()
                         st.success(f"✅ Project room allocations removed.")
                         st.rerun()
-                except Exception as e: st.error(f"❌ Failed to reset project allocations: {e}"); conn_reset_pra.rollback()
-                finally: return_connection(pool, conn_reset_pra)
+                except Exception as e: 
+                    st.error(f"❌ Failed to reset project allocations: {e}")
+                    conn_reset_pra.rollback()
+                finally: 
+                    return_connection(pool, conn_reset_pra)
 
-        if st.button("🧽 Remove All Project Room Preferences (Global Action)", key="btn_reset_all_proj_prefs"):
-            confirm_prp_reset = st.checkbox("Confirm removal of ALL project room preferences?", key="chk_confirm_prp_reset")
-            if confirm_prp_reset:
-                conn_reset_prp = get_connection(pool)
-                if conn_reset_prp:
-                    try:
-                        with conn_reset_prp.cursor() as cur:
-                            cur.execute("DELETE FROM weekly_preferences")
-                            conn_reset_prp.commit()
-                            st.success("✅ All project room preferences removed.")
-                            st.rerun()
-                    except Exception as e: st.error(f"❌ Failed: {e}"); conn_reset_prp.rollback()
-                    finally: return_connection(pool, conn_reset_prp)
+        # Initialize confirmation state
+        if "show_proj_prefs_confirm" not in st.session_state:
+            st.session_state.show_proj_prefs_confirm = False
+            
+        if not st.session_state.show_proj_prefs_confirm:
+            if st.button("🧽 Remove All Project Room Preferences (Global Action)", key="btn_reset_all_proj_prefs"):
+                st.session_state.show_proj_prefs_confirm = True
+                st.rerun()
+        else:
+            st.warning("⚠️ This will permanently delete ALL project room preferences!")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes, Delete All Preferences", key="btn_confirm_delete_proj_prefs"):
+                    # First backup the data
+                    backup_success = backup_weekly_preferences(pool, "admin", "Manual deletion via admin panel")
+                    
+                    conn_reset_prp = get_connection(pool)
+                    if conn_reset_prp:
+                        try:
+                            with conn_reset_prp.cursor() as cur:
+                                cur.execute("DELETE FROM weekly_preferences")
+                                conn_reset_prp.commit()
+                                if backup_success:
+                                    st.success("✅ All project room preferences removed and backed up to archive.")
+                                else:
+                                    st.success("✅ All project room preferences removed. (Backup may have failed)")
+                                st.session_state.show_proj_prefs_confirm = False
+                                st.rerun()
+                        except Exception as e: 
+                            st.error(f"❌ Failed: {e}")
+                            conn_reset_prp.rollback()
+                        finally: 
+                            return_connection(pool, conn_reset_prp)
+            
+            with col2:
+                if st.button("❌ Cancel", key="btn_cancel_delete_proj_prefs"):
+                    st.session_state.show_proj_prefs_confirm = False
+                    st.rerun()
 
 
         st.subheader("🌾 Reset Oasis Data")
@@ -507,20 +648,45 @@ with st.expander("🔐 Admin Controls"):
                         st.rerun()
                 except Exception as e: st.error(f"❌ Failed to reset Oasis allocations: {e}"); conn_reset_oa.rollback()
                 finally: return_connection(pool, conn_reset_oa)
-        
-        if st.button("🧽 Remove All Oasis Preferences (Global Action)", key="btn_reset_all_oasis_prefs"):
-            confirm_op_reset = st.checkbox("Confirm removal of ALL Oasis preferences?", key="chk_confirm_op_reset")
-            if confirm_op_reset:
-                conn_reset_op = get_connection(pool)
-                if conn_reset_op:
-                    try:
-                        with conn_reset_op.cursor() as cur:
-                            cur.execute("DELETE FROM oasis_preferences")
-                            conn_reset_op.commit()
-                            st.success("✅ All Oasis preferences removed.")
-                            st.rerun()
-                    except Exception as e: st.error(f"❌ Failed: {e}"); conn_reset_op.rollback()
-                    finally: return_connection(pool, conn_reset_op)
+          # Initialize confirmation state for Oasis
+        if "show_oasis_prefs_confirm" not in st.session_state:
+            st.session_state.show_oasis_prefs_confirm = False
+            
+        if not st.session_state.show_oasis_prefs_confirm:
+            if st.button("🧽 Remove All Oasis Preferences (Global Action)", key="btn_reset_all_oasis_prefs"):
+                st.session_state.show_oasis_prefs_confirm = True
+                st.rerun()
+        else:
+            st.warning("⚠️ This will permanently delete ALL Oasis preferences!")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Yes, Delete All Preferences", key="btn_confirm_delete_oasis_prefs"):
+                    # First backup the data
+                    backup_success = backup_oasis_preferences(pool, "admin", "Manual deletion via admin panel")
+                    
+                    conn_reset_op = get_connection(pool)
+                    if conn_reset_op:
+                        try:
+                            with conn_reset_op.cursor() as cur:
+                                cur.execute("DELETE FROM oasis_preferences")
+                                conn_reset_op.commit()
+                                if backup_success:
+                                    st.success("✅ All Oasis preferences removed and backed up to archive.")
+                                else:
+                                    st.success("✅ All Oasis preferences removed. (Backup may have failed)")
+                                st.session_state.show_oasis_prefs_confirm = False
+                                st.rerun()
+                        except Exception as e: 
+                            st.error(f"❌ Failed: {e}")
+                            conn_reset_op.rollback()
+                        finally: 
+                            return_connection(pool, conn_reset_op)
+            
+            with col2:
+                if st.button("❌ Cancel", key="btn_cancel_delete_oasis_prefs"):
+                    st.session_state.show_oasis_prefs_confirm = False
+                    st.rerun()
 
         st.subheader("🧾 Team Preferences (Admin Edit - Global)")
         df_team_prefs_admin = get_preferences(pool)
