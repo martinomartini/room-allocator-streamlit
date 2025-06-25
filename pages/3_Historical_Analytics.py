@@ -474,7 +474,7 @@ def get_current_oasis_utilization(current_df):
     return daily_counts, avg_utilization
 
 def get_corrected_oasis_utilization(df, weeks_back=8):
-    """Calculate historical Oasis utilization per day correctly - matches UI logic (all allocations)"""
+    """Calculate historical Oasis utilization per day - matches UI logic exactly (spots used = capacity - spots left)"""
     if df.empty:
         return pd.DataFrame(), 0.0
     
@@ -484,13 +484,26 @@ def get_corrected_oasis_utilization(df, weeks_back=8):
     if oasis_df.empty:
         return pd.DataFrame(), 0.0
     
-    # NOTE: To match UI behavior, we don't filter by confirmed status
-    # The UI "spots left" calculation uses all allocations, not just confirmed
-    # oasis_df = oasis_df[oasis_df['Confirmed'] == True]  # REMOVED to match UI
+    # NOTE: To match UI behavior exactly, we don't filter by confirmed status
+    # The UI "spots left" calculation uses all allocations from weekly_allocations table
     
-    # Count unique people per day (matches UI logic: nunique() for "used_spots")
+    # Replicate UI calculation exactly: count unique Team (people) per Date
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
-    daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
+    daily_counts.columns = ['Date', 'WeekDay', 'Used_Spots']
+    
+    # Calculate utilization: Used_Spots / OASIS_CAPACITY * 100 (matches UI logic)
+    daily_counts['Utilization'] = (daily_counts['Used_Spots'] / OASIS_CAPACITY * 100).round(1)
+    
+    # Add spots_left column to show the UI value
+    daily_counts['Spots_Left'] = OASIS_CAPACITY - daily_counts['Used_Spots']
+    
+    # Rename for consistency with other functions
+    daily_counts = daily_counts.rename(columns={'Used_Spots': 'People_Count'})
+    
+    # Calculate average utilization
+    avg_utilization = daily_counts['Utilization'].mean()
+    
+    return daily_counts, avg_utilization
     daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
     
     # Calculate average utilization
@@ -638,10 +651,16 @@ if not current_df.empty:
         # Calculate current utilization
         current_project_rooms = len(current_df[current_df['Room_Type'] == 'Project Room']['Room'].unique())
         current_project_util = (current_project_rooms / TOTAL_PROJECT_ROOMS * 100) if TOTAL_PROJECT_ROOMS > 0 else 0
-        
-        # Use corrected Oasis utilization calculation
-        current_oasis_util = current_oasis_avg if current_oasis_avg > 0 else 0
-        total_current_oasis_people = len(current_df[current_df['Room_Type'] == 'Oasis'])
+          # Calculate Oasis utilization exactly like UI does:
+        # UI logic: used_spots = df["Name"].nunique() per day, then utilization = used_spots/capacity * 100
+        oasis_data = current_df[current_df['Room_Type'] == 'Oasis']
+        if not oasis_data.empty:            # Count unique people per day (matches UI calculation exactly)
+            unique_people_per_day = oasis_data.groupby('Date')['Team'].nunique()
+            avg_daily_people = unique_people_per_day.mean() if len(unique_people_per_day) > 0 else 0
+            current_oasis_util = (avg_daily_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+        else:
+            current_oasis_util = 0
+            avg_daily_people = 0
         
         col1, col2 = st.columns(2)
         with col1:
@@ -650,7 +669,7 @@ if not current_df.empty:
         
         with col2:
             st.metric("Oasis Utilization", f"{current_oasis_util:.1f}%", 
-                     f"Avg daily attendance")
+                     f"Avg {avg_daily_people:.1f} people/day")
               # Show daily breakdown for current week
             if not current_oasis_daily.empty:
                 with st.expander("📊 Current Week Daily Breakdown"):
@@ -716,36 +735,48 @@ with col1:
     else:
         st.info("No project room data available for the selected period.")
 
-with col2:
-    st.write("**Oasis Utilization**")
-    if historical_oasis_avg > 0:
-        # Create a gauge-like visualization for Oasis using corrected calculation
-        fig_oasis = go.Figure(go.Indicator(
-            mode = "gauge+number+delta",
-            value = historical_oasis_avg,
-            domain = {'x': [0, 1], 'y': [0, 1]},
-            title = {'text': "Avg Daily Oasis Utilization %"},
-            delta = {'reference': 75},
-            gauge = {'axis': {'range': [None, 100]},
-                     'bar': {'color': "darkblue"},
-                     'steps': [
-                         {'range': [0, 50], 'color': "lightgray"},
-                         {'range': [50, 80], 'color': "yellow"},
-                         {'range': [80, 100], 'color': "red"}],                     'threshold': {'line': {'color': "red", 'width': 4},
-                                   'thickness': 0.75, 'value': 90}}))
-        
-        fig_oasis.update_layout(height=300)
-        st.plotly_chart(fig_oasis, use_container_width=True)
-        
-        # Show corrected Oasis statistics
-        if not historical_oasis_daily.empty:
+    with col2:
+        st.write("**Oasis Utilization**")
+        # Calculate historical Oasis utilization using the same logic as UI
+        historical_oasis = historical_df[historical_df['Room_Type'] == 'Oasis']
+        if not historical_oasis.empty:
+            # Count unique people per day (matches UI "used_spots" calculation)
+            daily_unique_people = historical_oasis.groupby('Date')['Team'].nunique()
+            historical_oasis_avg = (daily_unique_people.mean() / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+        else:
+            historical_oasis_avg = 0
+              if historical_oasis_avg > 0:
+            # Create a gauge-like visualization for Oasis using corrected calculation
+            fig_oasis = go.Figure(go.Indicator(
+                mode = "gauge+number+delta",
+                value = historical_oasis_avg,
+                domain = {'x': [0, 1], 'y': [0, 1]},
+                title = {'text': "Avg Daily Oasis Utilization %"},
+                delta = {'reference': 75},
+                gauge = {'axis': {'range': [None, 100]},
+                         'bar': {'color': "darkblue"},
+                         'steps': [
+                             {'range': [0, 50], 'color': "lightgray"},
+                             {'range': [50, 80], 'color': "yellow"},
+                             {'range': [80, 100], 'color': "red"}],
+                         'threshold': {'line': {'color': "red", 'width': 4},
+                                       'thickness': 0.75, 'value': 90}}))
+            
+            fig_oasis.update_layout(height=300)
+            st.plotly_chart(fig_oasis, use_container_width=True)
+            
+            # Show corrected Oasis statistics using the new calculation
             st.write("**Historical Oasis Statistics:**")
             st.metric("Average Daily Utilization", f"{historical_oasis_avg:.1f}%")
-            st.metric("Total Days with Data", len(historical_oasis_daily))
-            max_daily = historical_oasis_daily['Utilization'].max()
-            st.metric("Peak Day Utilization", f"{max_daily:.1f}%")
-    else:
-        st.info("No Oasis data available for the selected period.")
+            if not historical_oasis.empty:
+                daily_unique_people = historical_oasis.groupby('Date')['Team'].nunique()
+                total_days = len(daily_unique_people)
+                max_daily_people = daily_unique_people.max()
+                max_daily_util = (max_daily_people / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+                st.metric("Total Days with Data", total_days)
+                st.metric("Peak Day Utilization", f"{max_daily_util:.1f}%")
+        else:
+            st.info("No Oasis data available for the selected period.")
 
 # Daily Oasis Breakdown (using corrected data)
 if not historical_oasis_daily.empty:
