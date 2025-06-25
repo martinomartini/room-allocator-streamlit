@@ -631,18 +631,21 @@ with st.expander("🐛 Debug: Raw Data Analysis", expanded=False):
         current_oasis_raw = current_df[current_df['Room_Type'] == 'Oasis'].copy()
         if not current_oasis_raw.empty:
             st.write(f"**Total Oasis records in current week**: {len(current_oasis_raw)}")
-            st.write(f"**OASIS_CAPACITY**: {OASIS_CAPACITY}")
-              # Show which dates are in the raw data vs UI dates
+            st.write(f"**OASIS_CAPACITY**: {OASIS_CAPACITY}")            # Show which dates are in the raw data vs UI dates
             raw_dates = sorted(current_oasis_raw['Date'].dt.date.unique())
             # Handle both date and datetime objects
-            if hasattr(ui_week_dates[0], 'date'):
-                # datetime objects
-                ui_dates = [d.date() for d in ui_week_dates]
+            if ui_week_dates and len(ui_week_dates) > 0:
+                if hasattr(ui_week_dates[0], 'date'):
+                    # datetime objects
+                    ui_dates = [d.date() for d in ui_week_dates]
+                else:
+                    # already date objects
+                    ui_dates = ui_week_dates
+                st.write(f"**Raw data dates**: {[d.strftime('%Y-%m-%d') for d in raw_dates]}")
+                st.write(f"**UI dates**: {[d.strftime('%Y-%m-%d') for d in ui_dates]}")
             else:
-                # already date objects
-                ui_dates = ui_week_dates
-            st.write(f"**Raw data dates**: {[d.strftime('%Y-%m-%d') for d in raw_dates]}")
-            st.write(f"**UI dates**: {[d.strftime('%Y-%m-%d') for d in ui_dates]}")
+                st.write(f"**Raw data dates**: {[d.strftime('%Y-%m-%d') for d in raw_dates]}")
+                st.write("**UI dates**: No UI dates available")
             
             # Show daily breakdown calculation that matches UI
             daily_counts_debug = current_oasis_raw.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
@@ -1329,12 +1332,12 @@ if not current_df.empty:
         if not current_oasis_daily_analytics.empty:
             st.dataframe(current_oasis_daily_analytics[['Date', 'WeekDay', 'People_Count', 'Utilization']], use_container_width=True, hide_index=True)
         else:
-            st.warning("Analytics function returned empty data")
-          # Calculate overall stats
+            st.warning("Analytics function returned empty data")        # Calculate overall stats
         if not display_debug.empty:
-            avg_utilization_debug = daily_counts_debug['Utilization_Percent'].mean()
-            total_used_spots = daily_counts_debug['Used_Spots'].sum()
-            total_capacity_days = len(daily_counts_debug) * OASIS_CAPACITY
+            # Use the SAME data that's displayed in the table (display_debug), not daily_counts_debug
+            avg_utilization_debug = display_debug['Utilization_Percent'].mean()
+            total_used_spots = display_debug['Used_Spots'].sum()
+            total_capacity_days = len(display_debug) * OASIS_CAPACITY
             overall_utilization = (total_used_spots / total_capacity_days * 100) if total_capacity_days > 0 else 0
             
             col1, col2, col3 = st.columns(3)
