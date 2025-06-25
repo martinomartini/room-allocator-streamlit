@@ -956,7 +956,8 @@ else:
                             if edited_matrix.at[person_name_matrix, day_col_name]: 
                                 if occupied_counts_per_day[day_col_name] < oasis_capacity:
                                     date_obj_alloc = oasis_overview_monday_display + timedelta(days=day_idx)
-                                    # Insert allocation (confirmed if column exists)                                    if has_confirmed_col:
+                                    # Insert allocation (confirmed if column exists)
+                                    if has_confirmed_col:
                                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed, confirmed_at) VALUES (%s, %s, %s, %s, NOW())", (person_name_matrix, "Oasis", date_obj_alloc, True))
                                     else:
                                         cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)", (person_name_matrix, "Oasis", date_obj_alloc))
