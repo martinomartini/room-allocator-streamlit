@@ -450,8 +450,7 @@ def get_current_oasis_utilization(current_df, ui_week_dates=None):
     """Calculate current week Oasis utilization per day - matches UI 'spots left' calculation exactly"""
     if current_df.empty:
         return pd.DataFrame(), 0.0
-    
-    # Filter for Oasis allocations only
+      # Filter for Oasis allocations only
     oasis_df = current_df[current_df['Room_Type'] == 'Oasis']
     
     if oasis_df.empty:
@@ -460,10 +459,18 @@ def get_current_oasis_utilization(current_df, ui_week_dates=None):
     # DEBUG: Print what we're working with
     st.write(f"🔍 **DEBUG get_current_oasis_utilization**: Input has {len(current_df)} total records, {len(oasis_df)} Oasis records")
     
-    if ui_week_dates:
+    if ui_week_dates and len(ui_week_dates) > 0:
         st.write(f"🔍 **DEBUG**: UI week dates provided: {[d.strftime('%Y-%m-%d') for d in ui_week_dates]}")
         # Filter to exact same dates as UI displays
-        oasis_df = oasis_df[oasis_df['Date'].dt.date.isin([d.date() for d in ui_week_dates])]
+        # Handle both date and datetime objects
+        if hasattr(ui_week_dates[0], 'date'):
+            # datetime objects
+            ui_dates_as_dates = [d.date() for d in ui_week_dates]
+        else:
+            # already date objects
+            ui_dates_as_dates = ui_week_dates
+        
+        oasis_df = oasis_df[oasis_df['Date'].dt.date.isin(ui_dates_as_dates)]
         st.write(f"🔍 **DEBUG**: After filtering to UI dates: {len(oasis_df)} Oasis records")
     else:
         # Fallback: take first 5 chronological days (old logic)
@@ -625,10 +632,15 @@ with st.expander("🐛 Debug: Raw Data Analysis", expanded=False):
         if not current_oasis_raw.empty:
             st.write(f"**Total Oasis records in current week**: {len(current_oasis_raw)}")
             st.write(f"**OASIS_CAPACITY**: {OASIS_CAPACITY}")
-            
-            # Show which dates are in the raw data vs UI dates
+              # Show which dates are in the raw data vs UI dates
             raw_dates = sorted(current_oasis_raw['Date'].dt.date.unique())
-            ui_dates = [d.date() for d in ui_week_dates]
+            # Handle both date and datetime objects
+            if hasattr(ui_week_dates[0], 'date'):
+                # datetime objects
+                ui_dates = [d.date() for d in ui_week_dates]
+            else:
+                # already date objects
+                ui_dates = ui_week_dates
             st.write(f"**Raw data dates**: {[d.strftime('%Y-%m-%d') for d in raw_dates]}")
             st.write(f"**UI dates**: {[d.strftime('%Y-%m-%d') for d in ui_dates]}")
             
