@@ -24,7 +24,7 @@ except pytz.UnknownTimeZoneError:
 
 # --- Import from main app ---
 try:
-    from app import get_db_connection_pool, get_connection, return_connection, AVAILABLE_ROOMS
+    from app import get_db_connection_pool, get_connection, return_connection, AVAILABLE_ROOMS, STATIC_OASIS_MONDAY
     # Calculate room counts from rooms.json
     PROJECT_ROOMS = [r for r in AVAILABLE_ROOMS if r["name"] != "Oasis"]
     OASIS_ROOM = next((r for r in AVAILABLE_ROOMS if r["name"] == "Oasis"), {"capacity": 16})
@@ -35,6 +35,19 @@ try:
 except ImportError:
     st.error("❌ Could not import from main app. Please check file structure.")
     st.stop()
+
+# --- UI Week Logic (matches main app exactly) ---
+def get_ui_week_dates():
+    """Get the exact same 5-day period that the UI displays"""
+    # Initialize session state if needed (matches main app logic)
+    if "oasis_display_monday" not in st.session_state:
+        st.session_state.oasis_display_monday = STATIC_OASIS_MONDAY
+    
+    # Calculate the 5 days the UI displays (matches main app exactly)
+    oasis_overview_monday_display = st.session_state.oasis_display_monday 
+    oasis_overview_days_dates = [oasis_overview_monday_display + timedelta(days=i) for i in range(5)]
+    
+    return oasis_overview_days_dates
 
 # --- Historical Data Functions ---
 def get_historical_allocations(pool, start_date=None, end_date=None):
@@ -433,7 +446,7 @@ def get_oasis_daily_breakdown(pool, weeks_back=8):
     
     return daily_breakdown
 
-def get_current_oasis_utilization(current_df):
+def get_current_oasis_utilization(current_df, ui_week_dates=None):
     """Calculate current week Oasis utilization per day - matches UI 'spots left' calculation exactly"""
     if current_df.empty:
         return pd.DataFrame(), 0.0
@@ -447,19 +460,25 @@ def get_current_oasis_utilization(current_df):
     # DEBUG: Print what we're working with
     st.write(f"🔍 **DEBUG get_current_oasis_utilization**: Input has {len(current_df)} total records, {len(oasis_df)} Oasis records")
     
-    # Show all unique weeks in the data
-    if not oasis_df.empty:
-        unique_weeks = oasis_df['WeekStart'].unique()
-        st.write(f"🔍 **DEBUG**: All weeks in data: {[w.strftime('%Y-%m-%d') for w in sorted(unique_weeks)]}")
+    if ui_week_dates:
+        st.write(f"🔍 **DEBUG**: UI week dates provided: {[d.strftime('%Y-%m-%d') for d in ui_week_dates]}")
+        # Filter to exact same dates as UI displays
+        oasis_df = oasis_df[oasis_df['Date'].dt.date.isin([d.date() for d in ui_week_dates])]
+        st.write(f"🔍 **DEBUG**: After filtering to UI dates: {len(oasis_df)} Oasis records")
+    else:
+        # Fallback: take first 5 chronological days (old logic)
+        st.write(f"🔍 **DEBUG**: No UI dates provided, using fallback logic")
+        st.write(f"🔍 **DEBUG**: Date range in data: {oasis_df['Date'].min()} to {oasis_df['Date'].max()}")
         
-        # For now, let's process ALL data instead of filtering to just one week
-        # This matches what the manual calculation is doing
-        st.write(f"🔍 **DEBUG**: Processing ALL Oasis data (not filtering by week)")
-    
-    st.write(f"🔍 **DEBUG**: Date range in data: {oasis_df['Date'].min()} to {oasis_df['Date'].max()}")
+        unique_dates = sorted(oasis_df['Date'].dt.date.unique())
+        if len(unique_dates) > 5:
+            first_5_dates = unique_dates[:5]
+            st.write(f"🔍 **DEBUG**: Filtering to first 5 days: {first_5_dates}")
+            oasis_df = oasis_df[oasis_df['Date'].dt.date.isin(first_5_dates)]
+        else:
+            st.write(f"🔍 **DEBUG**: Using all {len(unique_dates)} days (≤5): {unique_dates}")
     
     # EXACT UI logic replication: count unique Team (Name in UI) per Date
-    # Process ALL data, not just one week
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
     daily_counts.columns = ['Date', 'WeekDay', 'Used_Spots']
     
@@ -585,9 +604,9 @@ with st.spinner("Loading analytics data..."):
                                               date.today())
     room_util = get_room_utilization(pool, weeks_back)
     weekly_trends = get_weekly_trends(pool, weeks_back)
-    preferences = get_preferences_data(pool, weeks_back)
-      # Get corrected Oasis utilization      # Get corrected Oasis utilization
-    current_oasis_daily, current_oasis_avg = get_current_oasis_utilization(current_df)
+    preferences = get_preferences_data(pool, weeks_back)    # Get corrected Oasis utilization
+    ui_week_dates = get_ui_week_dates()  # Get exact UI week dates
+    current_oasis_daily, current_oasis_avg = get_current_oasis_utilization(current_df, ui_week_dates)
     historical_oasis_daily, historical_oasis_avg = get_corrected_oasis_utilization(historical_df, weeks_back)
     oasis_daily_breakdown = get_oasis_daily_breakdown(pool, weeks_back)
 
@@ -1208,7 +1227,7 @@ if not current_df.empty:
         st.dataframe(display_debug, use_container_width=True, hide_index=True)        # Show the analytics calculation for comparison
         st.write("**Analytics Function Result vs Manual Calculation:**")
         try:
-            current_oasis_daily_analytics, current_oasis_avg_analytics = get_current_oasis_utilization(current_df)
+            current_oasis_daily_analytics, current_oasis_avg_analytics = get_current_oasis_utilization(current_df, ui_week_dates)
             
             if not current_oasis_daily_analytics.empty:
                 st.write("**Analytics Function Output:**")
