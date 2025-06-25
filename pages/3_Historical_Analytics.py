@@ -734,15 +734,26 @@ with col1:
         st.dataframe(room_util['project'], use_container_width=True, hide_index=True)
     else:
         st.info("No project room data available for the selected period.")
-
+    
     with col2:
-        st.write("**Oasis Utilization**")        # Calculate historical Oasis utilization using the same logic as UI
-        historical_oasis = historical_df[historical_df['Room_Type'] == 'Oasis']
-        if not historical_oasis.empty:
-            # Count unique people per day (matches UI "used_spots" calculation)
-            daily_unique_people = historical_oasis.groupby('Date')['Team'].nunique()
-            historical_oasis_avg = (daily_unique_people.mean() / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+        st.write("**Oasis Utilization**")
+        
+        # Calculate historical Oasis utilization using the same logic as UI
+        # Safety check: ensure historical_df has the required columns
+        if not historical_df.empty and 'Room_Type' in historical_df.columns:
+            historical_oasis = historical_df[historical_df['Room_Type'] == 'Oasis']
+            if not historical_oasis.empty:
+                # Count unique people per day (matches UI "used_spots" calculation)
+                daily_unique_people = historical_oasis.groupby('Date')['Team'].nunique()
+                historical_oasis_avg = (daily_unique_people.mean() / OASIS_CAPACITY * 100) if OASIS_CAPACITY > 0 else 0
+            else:
+                historical_oasis_avg = 0.0
         else:
+            historical_oasis_avg = 0.0
+            if historical_df.empty:
+                st.info("No historical data available")
+            else:
+                st.warning(f"Missing columns in historical data: {list(historical_df.columns)}")
             historical_oasis_avg = 0
         
         if historical_oasis_avg > 0:
