@@ -433,7 +433,7 @@ def get_oasis_daily_breakdown(pool, weeks_back=8):
     return daily_breakdown
 
 def get_current_oasis_utilization(current_df):
-    """Calculate current week Oasis utilization per day correctly - matches UI 'spots left' calculation"""
+    """Calculate current week Oasis utilization per day - matches UI 'spots left' calculation exactly"""
     if current_df.empty:
         return pd.DataFrame(), 0.0
     
@@ -444,18 +444,26 @@ def get_current_oasis_utilization(current_df):
         return pd.DataFrame(), 0.0
     
     # NOTE: UI shows "spots left" based on ALL allocations (not just confirmed)
-    # To match UI behavior, we don't filter by confirmed status here
-    # oasis_df = oasis_df[oasis_df['Confirmed'] == True]  # REMOVED to match UI
+    # To match UI behavior exactly, we replicate the UI logic:
+    # current_day_alloc_counts[day_dt_check] = df_matrix_data[df_matrix_data["Date"] == day_dt_check]["Name"].nunique()
     
     # Filter to only current week (most recent week in the data)
     if not oasis_df.empty:
         latest_week = oasis_df['WeekStart'].max()
         oasis_df = oasis_df[oasis_df['WeekStart'] == latest_week]
     
-    # Count unique people per day (matches UI logic: nunique() for "used_spots")
+    # Replicate UI calculation exactly: count unique Team (people) per Date
     daily_counts = oasis_df.groupby(['Date', 'WeekDay'])['Team'].nunique().reset_index()
-    daily_counts.columns = ['Date', 'WeekDay', 'People_Count']
-    daily_counts['Utilization'] = (daily_counts['People_Count'] / OASIS_CAPACITY * 100).round(1)
+    daily_counts.columns = ['Date', 'WeekDay', 'Used_Spots']
+    
+    # Calculate utilization: Used_Spots / OASIS_CAPACITY * 100 (matches UI logic)
+    daily_counts['Utilization'] = (daily_counts['Used_Spots'] / OASIS_CAPACITY * 100).round(1)
+    
+    # Add spots_left column to show the UI value
+    daily_counts['Spots_Left'] = OASIS_CAPACITY - daily_counts['Used_Spots']
+    
+    # Rename for consistency with other functions
+    daily_counts = daily_counts.rename(columns={'Used_Spots': 'People_Count'})
     
     # Sort by date to show in chronological order
     daily_counts = daily_counts.sort_values('Date')
