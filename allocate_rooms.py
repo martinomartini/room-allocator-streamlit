@@ -117,11 +117,10 @@ def run_allocation(database_url, only=None, base_monday_date=None):
             teams_for_fallback_immediately = []
 
             for team_name, team_size, preferred_days_str in team_preferences_raw:
-                pref_day_labels = sorted([
+                pref_day_labels = [
                     day.strip().capitalize() for day in preferred_days_str.split(',') if day.strip()
-                ])
+                ]
                 team_data = (team_name, int(team_size), pref_day_labels)
-                
                 print(f"Processing team {team_name}: raw='{preferred_days_str}' -> parsed={pref_day_labels}")
 
                 if pref_day_labels == ["Monday", "Wednesday"]:
