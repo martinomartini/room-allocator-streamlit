@@ -410,39 +410,39 @@ with col2:
     if st.button("📊 View Analytics Dashboard", type="secondary"):
         st.switch_page("pages/3_Historical_Analytics.py")
 
-st.info(
-    """
-    💡 **How This Works:**
+# st.info(
+#     """
+#     💡 **How This Works:**
     
-    - 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible. 
-      There are 6 rooms for 4 persons and 1 room for 6 persons.
-    - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. 
-      There are 16 places in the Oasis.
-    - ❗ You may only submit **once**. If you need to change your input, contact an admin.
-    - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. 
-      The allocations will be shared on **Thursday at 16:00**.
-    - 🌿 **Oasis preferences** can be submitted **from Wednesday 09:00 until Friday 16:00**, 
-      and allocation will be done at **Friday 16:00**.
-    - ✅ Allocations are refreshed **weekly** by an admin. 
+#     - 🧑‍🤝‍🧑 Project teams can select **either Monday & Wednesday** or **Tuesday & Thursday**. **Friday** is (for now) flexible. 
+#       There are 6 rooms for 4 persons and 1 room for 6 persons.
+#     - 🌿 Oasis users can choose **up to 5 preferred weekdays**, and will be randomly assigned—fairness is guaranteed. 
+#       There are 16 places in the Oasis.
+#     - ❗ You may only submit **once**. If you need to change your input, contact an admin.
+#     - 🗓️ **From Wednesday 09:00** you can submit your **project room preference** until **Thursday 16:00**. 
+#       The allocations will be shared on **Thursday at 16:00**.
+#     - 🌿 **Oasis preferences** can be submitted **from Wednesday 09:00 until Friday 16:00**, 
+#       and allocation will be done at **Friday 16:00**.
+#     - ✅ Allocations are refreshed **weekly** by an admin. 
         
-    ---
+#     ---
     
-    ### 🌿 Oasis: How to Join
+#     ### 🌿 Oasis: How to Join
     
-    1. **✅ Reserve Oasis Seat (recommended)**  
-       ➤ Submit your **preferred days** (up to 5).  
-       ➤ Allocation is done **automatically and fairly** at **Friday 16:00**.  
-       ➤ Everyone gets **at least one** of their preferred days, depending on availability.
+#     1. **✅ Reserve Oasis Seat (recommended)**  
+#        ➤ Submit your **preferred days** (up to 5).  
+#        ➤ Allocation is done **automatically and fairly** at **Friday 16:00**.  
+#        ➤ Everyone gets **at least one** of their preferred days, depending on availability.
 
-    2. **⚠️ Add Yourself to Oasis Allocation (only if you forgot)**  
-       ➤ Use this **only if you missed the deadline** or forgot to submit your preferences.  
-       ➤ You will be added **immediately** to the selected days **if there's space left**.  
-       ➤ This option does **not guarantee fairness** and bypasses the regular process.
+#     2. **⚠️ Add Yourself to Oasis Allocation (only if you forgot)**  
+#        ➤ Use this **only if you missed the deadline** or forgot to submit your preferences.  
+#        ➤ You will be added **immediately** to the selected days **if there's space left**.  
+#        ➤ This option does **not guarantee fairness** and bypasses the regular process.
 
-    ℹ️ Always use **"Reserve Oasis Seat"** before Friday 16:00 to ensure fair participation.  
-    Only use **"Add Yourself"** if you forgot to register.
-    """
-)
+#     ℹ️ Always use **"Reserve Oasis Seat"** before Friday 16:00 to ensure fair participation.  
+#     Only use **"Add Yourself"** if you forgot to register.
+#     """
+# )
 
 now_local = datetime.now(OFFICE_TIMEZONE)
 st.info(f"Current Office Time: **{now_local.strftime('%Y-%m-%d %H:%M:%S')}** ({OFFICE_TIMEZONE_STR})")
