@@ -1,8 +1,8 @@
-# Bug Fixes Summary
+# Bug Fixes Summary - Updated
 
 ## Issues Fixed
 
-### 1. Admin Settings UI Jumping Issue
+### 1. Admin Settings UI Jumping Issue ✅
 
 **Problem**: When typing in the admin settings text inputs, the page would jump and close the admin settings expander unexpectedly.
 
@@ -16,66 +16,82 @@
 **Files Modified**: 
 - `app.py` (lines ~450-520): Modified admin display text configuration section
 
-### 2. Room Allocation Logic Issue
+### 2. Room Allocation Logic Issue 🔍 (DEBUGGING ENHANCED)
 
-**Problem**: Teams with Tuesday/Thursday preferences were sometimes allocated to Monday/Wednesday slots even when Tuesday/Thursday rooms were available.
+**Problem**: Teams with Tuesday/Thursday preferences were sometimes allocated to Monday/Wednesday slots even when Tuesday/Thursday rooms were available (e.g., Project Breeze shown in the image).
 
-**Root Causes**:
-1. **Incorrect fallback logic**: In the fallback allocation, teams that preferred Tuesday/Thursday were trying Monday/Wednesday first instead of retrying their preferred days
-2. **Insufficient logging**: No visibility into why preferences weren't being honored
+**Root Causes Investigated**:
+1. **Incorrect fallback logic**: Fixed - Teams now prioritize their original preference first in fallback
+2. **Insufficient logging**: Fixed - Added comprehensive debugging
+3. **Possible room availability issue**: Teams might not be getting preferred slots due to capacity constraints
 
-**Solutions**:
+**Solutions Implemented**:
 1. **Fixed preference ordering in fallback**:
    - Teams that prefer Tuesday/Thursday now try Tuesday/Thursday first in fallback, then Monday/Wednesday
    - Teams that prefer Monday/Wednesday now try Monday/Wednesday first in fallback, then Tuesday/Thursday
    
-2. **Enhanced logging**:
-   - Added detailed logging for each placement attempt
-   - Shows available rooms for each day pair
-   - Indicates whether preference was honored or fallback was used
-   - Added summary of placement results before fallback phase
+2. **Enhanced debugging and logging**:
+   - **Team categorization**: Shows exactly how each team's preferences are parsed and which group they're assigned to
+   - **Room availability tracking**: Shows which rooms are already used on each day during placement attempts
+   - **Detailed placement attempts**: Shows every team placement attempt with available rooms and capacity matching
+   - **Preference honor tracking**: Shows whether each team got their preferred days or had to use fallback
+   - **Unplaced team tracking**: Shows which teams couldn't be placed after each phase
+   
+3. **New debugging output includes**:
+   ```
+   Processing team Project Breeze: raw='Tuesday,Thursday' -> parsed=['Tuesday', 'Thursday']
+   → Added to Tuesday/Thursday group
+   
+   Attempting placement for Tuesday/Thursday - 5 teams
+   Teams to place: ['Project Breeze', 'Team A', ...]
+   Rooms already used on Tuesday: ['Room 00205', 'Room 00289']
+   Rooms already used on Thursday: ['Room 00205', 'Room 00289']
+   
+   Trying to place Project Breeze (size 5) in Tuesday/Thursday
+   Available rooms: ['Room 00208', 'Room 00210'] (capacity >= 5)
+   ```
 
 **Files Modified**: 
-- `allocate_rooms.py` (lines ~185-250): Modified fallback allocation logic and added enhanced logging
+- `allocate_rooms.py`: Added extensive debugging throughout the allocation process
+
+## Next Steps for Diagnosis
+
+With the enhanced debugging, the next allocation run will provide detailed information about:
+
+1. **Why Project Breeze didn't get Tuesday/Thursday**: 
+   - Were there available rooms with sufficient capacity?
+   - Were Tuesday/Thursday slots already full?
+   - Did Project Breeze get processed in the correct preference group?
+
+2. **Room utilization patterns**:
+   - Which rooms are being used on which days
+   - Whether there's a capacity or availability issue
+
+3. **Preference parsing accuracy**:
+   - Verify that "Tuesday,Thursday" is correctly parsed as `['Tuesday', 'Thursday']`
 
 ## Technical Details
 
-### Admin Settings Form Implementation
+### Debugging Features Added
 ```python
-# OLD (caused jumping):
-new_text = st.text_input("Label", value, key="unique_key")
-if st.button("Save"):
-    save_to_database(new_text)
+# Team preference parsing debugging
+print(f"Processing team {team_name}: raw='{preferred_days_str}' -> parsed={pref_day_labels}")
 
-# NEW (prevents jumping):
-with st.form("admin_form"):
-    new_text = st.text_input("Label", value)
-    if st.form_submit_button("Save"):
-        save_to_database(new_text)
-```
+# Room availability debugging  
+print(f"Available rooms: {[r['name'] for r in possible_rooms_for_team]} (capacity >= {team_size})")
 
-### Room Allocation Logic Fix
-```python
-# OLD (incorrect preference order):
-if original_pref_labels == ["Tuesday", "Thursday"]:
-    fallback_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]  # Wrong order!
-
-# NEW (correct preference order):
-if original_pref_labels == ["Tuesday", "Thursday"]:
-    fallback_day_pairs = [("Tuesday", "Thursday"), ("Monday", "Wednesday")]  # Correct order!
+# Preference honor tracking
+preference_honored = (fb_day1_label, fb_day2_label) == (original_pref_labels[0], original_pref_labels[1])
+honor_status = "✓ PREFERENCE HONORED" if preference_honored else f"⚠ Fallback used (wanted {original_pref_labels})"
 ```
 
 ## Testing Recommendations
 
-1. **Admin Settings**: Test typing in the display text fields to confirm no jumping occurs
-2. **Room Allocation**: 
-   - Create test scenarios with teams preferring Tuesday/Thursday
-   - Run allocation and check logs to verify preferences are honored when possible
-   - Monitor console output for detailed placement information
+1. **Run the allocation with debugging**: The console output will now show exactly why teams are placed where they are
+2. **Check room capacity vs team size**: Verify that teams requiring larger rooms aren't being blocked by capacity constraints  
+3. **Monitor preference parsing**: Confirm that stored preferences match what's being parsed
+4. **Review timing**: Check if teams are submitting preferences after rooms are already allocated
 
-## Benefits
+## Expected Outcome
 
-1. **Better User Experience**: Admin can now edit settings without UI jumping
-2. **Fairer Allocation**: Teams more likely to get their preferred days when rooms are available
-3. **Better Debugging**: Enhanced logging helps identify allocation issues
-4. **Maintainable Code**: Clear separation of concerns and improved code structure
+The enhanced debugging will reveal the exact reason why Project Breeze (and other teams) are not getting their preferred Tuesday/Thursday slots, allowing for targeted fixes to the allocation algorithm.

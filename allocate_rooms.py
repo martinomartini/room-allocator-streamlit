@@ -121,13 +121,18 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                     day.strip().capitalize() for day in preferred_days_str.split(',') if day.strip()
                 ])
                 team_data = (team_name, int(team_size), pref_day_labels)
+                
+                print(f"Processing team {team_name}: raw='{preferred_days_str}' -> parsed={pref_day_labels}")
 
                 if pref_day_labels == ["Monday", "Wednesday"]:
                     teams_for_mon_wed.append(team_data)
+                    print(f"  → Added to Monday/Wednesday group")
                 elif pref_day_labels == ["Tuesday", "Thursday"]:
                     teams_for_tue_thu.append(team_data)
+                    print(f"  → Added to Tuesday/Thursday group")
                 else:
                     teams_for_fallback_immediately.append(team_data)
+                    print(f"  → Added to immediate fallback group")
 
             print(f"Teams preferring Mon/Wed: {len(teams_for_mon_wed)}")
             print(f"Teams preferring Tue/Thu: {len(teams_for_tue_thu)}")
@@ -145,18 +150,28 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                 still_unplaced_from_this_pair = []
 
                 print(f"Attempting placement for {day1_label}/{day2_label} - {len(sorted_teams_for_pair)} teams")
+                print(f"  Teams to place: {[t[0] for t in sorted_teams_for_pair]}")
+                print(f"  Rooms already used on {day1_label}: {used_rooms_on_date[actual_date1]}")
+                print(f"  Rooms already used on {day2_label}: {used_rooms_on_date[actual_date2]}")
 
                 for team_name, team_size, original_pref_labels in sorted_teams_for_pair:
                     if team_name in placed_teams_info:
                         continue
+                    
+                    print(f"  Trying to place {team_name} (size {team_size}) in {day1_label}/{day2_label}")
+                    
                     possible_rooms_for_team = [
                         room_config for room_config in project_rooms
                         if room_config["name"] not in used_rooms_on_date[actual_date1]
                         and room_config["name"] not in used_rooms_on_date[actual_date2]
                         and room_config["capacity"] >= team_size
                     ]
+                    
+                    print(f"    Available rooms: {[r['name'] for r in possible_rooms_for_team]} (capacity >= {team_size})")
+                    
                     if not possible_rooms_for_team:
                         still_unplaced_from_this_pair.append((team_name, team_size, original_pref_labels))
+                        print(f"    ❌ No available rooms for {team_name}")
                         continue
                     min_suitable_capacity = min(r['capacity'] for r in possible_rooms_for_team)
                     best_fit_candidate_rooms = [r for r in possible_rooms_for_team if r['capacity'] == min_suitable_capacity]
@@ -170,12 +185,15 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                     used_rooms_on_date[actual_date1].append(chosen_room_config["name"])
                     used_rooms_on_date[actual_date2].append(chosen_room_config["name"])
                     placed_teams_info[team_name] = [actual_date1, actual_date2]
-                    print(f"Placed team {team_name} in {chosen_room_config['name']} for {day1_label}/{day2_label}")
+                    print(f"    ✅ Placed team {team_name} in {chosen_room_config['name']} for {day1_label}/{day2_label}")
 
                 return still_unplaced_from_this_pair
 
             unplaced_after_mon_wed_pass = attempt_placement_for_pair(teams_for_mon_wed, "Monday", "Wednesday")
+            print(f"Unplaced after Mon/Wed pass: {[t[0] for t in unplaced_after_mon_wed_pass]}")
+            
             unplaced_after_tue_thu_pass = attempt_placement_for_pair(teams_for_tue_thu, "Tuesday", "Thursday")
+            print(f"Unplaced after Tue/Thu pass: {[t[0] for t in unplaced_after_tue_thu_pass]}")
             
             # Log detailed results before fallback
             print(f"After preferred placement phase:")
@@ -186,9 +204,12 @@ def run_allocation(database_url, only=None, base_monday_date=None):
             master_fallback_pool = unplaced_after_mon_wed_pass + unplaced_after_tue_thu_pass + teams_for_fallback_immediately
             random.shuffle(master_fallback_pool)
 
-            print(f"Fallback allocation needed for {len(master_fallback_pool)} teams")            
+            print(f"Fallback allocation needed for {len(master_fallback_pool)} teams")
+            
             final_unplaced_project_teams = []
-            sorted_fallback_teams = sorted(master_fallback_pool, key=lambda x: x[1], reverse=True)            # Define the only valid day pairs for project teams
+            sorted_fallback_teams = sorted(master_fallback_pool, key=lambda x: x[1], reverse=True)
+            
+            # Define the only valid day pairs for project teams
             valid_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]
 
             for team_name, team_size, original_pref_labels in sorted_fallback_teams:
