@@ -176,28 +176,37 @@ def run_allocation(database_url, only=None, base_monday_date=None):
 
             unplaced_after_mon_wed_pass = attempt_placement_for_pair(teams_for_mon_wed, "Monday", "Wednesday")
             unplaced_after_tue_thu_pass = attempt_placement_for_pair(teams_for_tue_thu, "Tuesday", "Thursday")
+            
+            # Log detailed results before fallback
+            print(f"After preferred placement phase:")
+            print(f"  - Monday/Wednesday teams placed: {len(teams_for_mon_wed) - len(unplaced_after_mon_wed_pass)}")
+            print(f"  - Tuesday/Thursday teams placed: {len(teams_for_tue_thu) - len(unplaced_after_tue_thu_pass)}")
+            print(f"  - Teams needing fallback: {len(unplaced_after_mon_wed_pass) + len(unplaced_after_tue_thu_pass) + len(teams_for_fallback_immediately)}")
+            
             master_fallback_pool = unplaced_after_mon_wed_pass + unplaced_after_tue_thu_pass + teams_for_fallback_immediately
             random.shuffle(master_fallback_pool)
 
             print(f"Fallback allocation needed for {len(master_fallback_pool)} teams")            
             final_unplaced_project_teams = []
-            sorted_fallback_teams = sorted(master_fallback_pool, key=lambda x: x[1], reverse=True)
-
-            # Define the only valid day pairs for project teams
+            sorted_fallback_teams = sorted(master_fallback_pool, key=lambda x: x[1], reverse=True)            # Define the only valid day pairs for project teams
             valid_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]
 
             for team_name, team_size, original_pref_labels in sorted_fallback_teams:
                 if team_name in placed_teams_info:
                     continue
+                
                 placed_in_fallback = False
                 
+                print(f"Trying to place team {team_name} (preferred: {original_pref_labels}) in fallback...")
+                
                 # Determine fallback preference order based on original preference
+                # Keep original preference as first choice, then try the alternative
                 if original_pref_labels == ["Monday", "Wednesday"]:
-                    # If they preferred Mon/Wed, try Tue/Thu as fallback
-                    fallback_day_pairs = [("Tuesday", "Thursday"), ("Monday", "Wednesday")]
-                elif original_pref_labels == ["Tuesday", "Thursday"]:
-                    # If they preferred Tue/Thu, try Mon/Wed as fallback
+                    # If they preferred Mon/Wed, try Mon/Wed first, then Tue/Thu as fallback
                     fallback_day_pairs = [("Monday", "Wednesday"), ("Tuesday", "Thursday")]
+                elif original_pref_labels == ["Tuesday", "Thursday"]:
+                    # If they preferred Tue/Thu, try Tue/Thu first, then Mon/Wed as fallback
+                    fallback_day_pairs = [("Tuesday", "Thursday"), ("Monday", "Wednesday")]
                 else:
                     # For other preferences, try both valid pairs randomly
                     fallback_day_pairs = valid_day_pairs.copy()
@@ -206,12 +215,16 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                 for fb_day1_label, fb_day2_label in fallback_day_pairs:
                     fb_actual_date1 = day_mapping[fb_day1_label]
                     fb_actual_date2 = day_mapping[fb_day2_label]
+                    
                     possible_rooms_for_fallback = [
                         room_config for room_config in project_rooms
                         if room_config["name"] not in used_rooms_on_date[fb_actual_date1]
                         and room_config["name"] not in used_rooms_on_date[fb_actual_date2]
                         and room_config["capacity"] >= team_size
                     ]
+                    
+                    print(f"  Checking {fb_day1_label}/{fb_day2_label}: {len(possible_rooms_for_fallback)} available rooms (team size: {team_size})")
+                    
                     if not possible_rooms_for_fallback:
                         continue
                     min_suitable_capacity_fb = min(r['capacity'] for r in possible_rooms_for_fallback)
@@ -225,9 +238,14 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                                 (team_name, chosen_room_fb_config["name"], fb_actual_date2))
                     used_rooms_on_date[fb_actual_date1].append(chosen_room_fb_config["name"])
                     used_rooms_on_date[fb_actual_date2].append(chosen_room_fb_config["name"])
+                    
                     placed_teams_info[team_name] = [fb_actual_date1, fb_actual_date2]
                     placed_in_fallback = True
-                    print(f"Fallback: Placed team {team_name} in {chosen_room_fb_config['name']} for {fb_day1_label}/{fb_day2_label}")
+                    
+                    # Enhanced logging to show if preference was honored or not
+                    preference_honored = (fb_day1_label, fb_day2_label) == (original_pref_labels[0], original_pref_labels[1]) if len(original_pref_labels) == 2 else False
+                    honor_status = "✓ PREFERENCE HONORED" if preference_honored else f"⚠ Fallback used (wanted {original_pref_labels})"
+                    print(f"  → Placed team {team_name} in {chosen_room_fb_config['name']} for {fb_day1_label}/{fb_day2_label} - {honor_status}")
                     break
 
                 if not placed_in_fallback:

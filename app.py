@@ -450,7 +450,7 @@ st.info(f"Current Office Time: **{now_local.strftime('%Y-%m-%d %H:%M:%S')}** ({O
 # ---------------- Admin Controls ---------------------
 with st.expander("🔐 Admin Controls"):
     pwd = st.text_input("Enter admin password:", type="password", key="admin_pwd_main")
-
+    
     if pwd == RESET_PASSWORD:
         st.success("✅ Access granted.")
 
@@ -462,62 +462,63 @@ with st.expander("🔐 Admin Controls"):
             st.cache_data.clear()
             admin_settings = load_admin_settings()
             st.success("Settings refreshed from database!")
+            st.rerun()
         
-        new_submission_week_of_text = st.text_input(
-            "Text for 'Submissions for the week of ...' (e.g., '9 June')", 
-            admin_settings['submission_week_of_text'],
-            key="conf_sub_week_text"
-        )
-        new_sub_start_text = st.text_input(
-            "Display text for 'Submission start'", 
-            admin_settings['submission_start_text'],
-            key="conf_sub_start_text"
-        )
-        new_sub_end_text = st.text_input(
-            "Display text for 'Submission end'", 
-            admin_settings['submission_end_text'],
-            key="conf_sub_end_text"
-        )
-        new_oasis_end_text = st.text_input(
-            "Display text for 'Oasis end'", 
-            admin_settings['oasis_end_text'],
-            key="conf_oasis_end_text"
-        )
-        
-        new_project_alloc_display_markdown = st.text_area(
-            "Header text for 'Project Room Allocations' section", 
-            admin_settings['project_allocations_display_markdown_content'],
-            key="conf_proj_alloc_header",
-            height=100
-        )
-        new_oasis_alloc_display_markdown = st.text_area(
-            "Header text for 'Oasis Allocations' section", 
-            admin_settings['oasis_allocations_display_markdown_content'],
-            key="conf_oasis_alloc_header",
-            height=100
-        )
-        
-        if st.button("💾 Save All Display Texts to Database", key="btn_update_conf_texts"):
-            success_count = 0
-            if set_admin_setting(pool, 'submission_week_of_text', new_submission_week_of_text):
-                success_count += 1
-            if set_admin_setting(pool, 'submission_start_text', new_sub_start_text):
-                success_count += 1
-            if set_admin_setting(pool, 'submission_end_text', new_sub_end_text):
-                success_count += 1
-            if set_admin_setting(pool, 'oasis_end_text', new_oasis_end_text):
-                success_count += 1
-            if set_admin_setting(pool, 'project_allocations_display_markdown_content', new_project_alloc_display_markdown):
-                success_count += 1
-            if set_admin_setting(pool, 'oasis_allocations_display_markdown_content', new_oasis_alloc_display_markdown):
-                success_count += 1
+        # Use a form to prevent jumping when typing
+        with st.form("admin_display_texts_form"):
+            st.markdown("### Display Text Configuration")
             
-            if success_count == 6:
-                st.success("✅ All display texts saved to database and will persist permanently!")
-                st.cache_data.clear()  # Clear cache to reload new values
-                st.rerun()
-            else:
-                st.error(f"❌ Only {success_count}/6 settings saved successfully.")
+            new_submission_week_of_text = st.text_input(
+                "Text for 'Submissions for the week of ...' (e.g., '9 June')", 
+                admin_settings['submission_week_of_text']
+            )
+            new_sub_start_text = st.text_input(
+                "Display text for 'Submission start'", 
+                admin_settings['submission_start_text']
+            )
+            new_sub_end_text = st.text_input(
+                "Display text for 'Submission end'", 
+                admin_settings['submission_end_text']
+            )
+            new_oasis_end_text = st.text_input(
+                "Display text for 'Oasis end'", 
+                admin_settings['oasis_end_text']
+            )
+            
+            new_project_alloc_display_markdown = st.text_area(
+                "Header text for 'Project Room Allocations' section", 
+                admin_settings['project_allocations_display_markdown_content'],
+                height=100
+            )
+            new_oasis_alloc_display_markdown = st.text_area(
+                "Header text for 'Oasis Allocations' section", 
+                admin_settings['oasis_allocations_display_markdown_content'],
+                height=100
+            )
+            
+            form_submit_button = st.form_submit_button("💾 Save All Display Texts to Database")
+            
+            if form_submit_button:
+                success_count = 0
+                if set_admin_setting(pool, 'submission_week_of_text', new_submission_week_of_text):
+                    success_count += 1
+                if set_admin_setting(pool, 'submission_start_text', new_sub_start_text):
+                    success_count += 1
+                if set_admin_setting(pool, 'submission_end_text', new_sub_end_text):
+                    success_count += 1
+                if set_admin_setting(pool, 'oasis_end_text', new_oasis_end_text):
+                    success_count += 1
+                if set_admin_setting(pool, 'project_allocations_display_markdown_content', new_project_alloc_display_markdown):
+                    success_count += 1
+                if set_admin_setting(pool, 'oasis_allocations_display_markdown_content', new_oasis_alloc_display_markdown):
+                    success_count += 1
+                
+                if success_count == 6:
+                    st.success("✅ All display texts saved to database and will persist permanently!")
+                    st.cache_data.clear()  # Clear cache to reload new values
+                    st.rerun()
+                else:
+                    st.error(f"❌ Only {success_count}/6 settings saved successfully.")
 
         st.subheader("🧠 Project Room Admin")
         if st.button("🚀 Run Project Room Allocation", key="btn_run_proj_alloc"):
