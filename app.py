@@ -816,7 +816,7 @@ with st.form("oasis_add_form_main"):
     )
     add_adhoc_submit = st.form_submit_button("➕ Add Me to Oasis Schedule")
 
-    if add_adhoc_submit:
+if add_adhoc_submit:
         if not adhoc_oasis_name.strip(): st.error("❌ Please enter your name.")
         elif not adhoc_oasis_days: st.error("❌ Select at least one day.")
         else:
@@ -828,6 +828,17 @@ with st.form("oasis_add_form_main"):
                         name_clean = adhoc_oasis_name.strip().title()
                         days_map_indices = {"Monday": 0, "Tuesday": 1, "Wednesday": 2, "Thursday": 3, "Friday": 4}
                         
+                        # First, check if the confirmed column exists
+                        has_confirmed_column = False
+                        try:
+                            cur.execute("SELECT confirmed FROM weekly_allocations LIMIT 1")
+                            has_confirmed_column = True
+                        except psycopg2.errors.UndefinedColumn:
+                            # Column doesn't exist, rollback and continue without it
+                            conn_adhoc.rollback()
+                            has_confirmed_column = False
+                        
+                        # Remove existing entries for this person on selected days
                         for day_str in adhoc_oasis_days: 
                             date_obj_check = current_oasis_display_mon_adhoc + timedelta(days=days_map_indices[day_str])
                             cur.execute("DELETE FROM weekly_allocations WHERE room_name = 'Oasis' AND team_name = %s AND date = %s", (name_clean, date_obj_check))
@@ -841,12 +852,12 @@ with st.form("oasis_add_form_main"):
                                 st.warning(f"⚠️ Oasis is full on {day_str}. Could not add {name_clean}.")
                                 added_to_all_selected = False
                             else:
-                                # Insert allocation - try with confirmed column first, fallback if column doesn't exist
-                                try:
+                                # Insert allocation - use confirmed column if it exists
+                                if has_confirmed_column:
                                     cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date, confirmed) VALUES (%s, 'Oasis', %s, %s)", (name_clean, date_obj, False))
-                                except psycopg2.errors.UndefinedColumn:
-                                    # Fallback for when confirmed column doesn't exist yet
+                                else:
                                     cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, 'Oasis', %s)", (name_clean, date_obj))
+                        
                         conn_adhoc.commit()
                         if added_to_all_selected and adhoc_oasis_days:
                             st.success(f"✅ {name_clean} added to Oasis for selected day(s)! Please confirm attendance via the matrix below.")
@@ -855,7 +866,11 @@ with st.form("oasis_add_form_main"):
                         st.rerun()
                 except Exception as e:
                     st.error(f"❌ Error adding to Oasis: {e}")
-                    if conn_adhoc: conn_adhoc.rollback()
+                    if conn_adhoc: 
+                        try:
+                            conn_adhoc.rollback()
+                        except:
+                            pass  # Connection might already be closed or in invalid state
                 finally: return_connection(pool, conn_adhoc)
 
 # -----------------------------------------------------
