@@ -32,7 +32,7 @@ try:
 except FileNotFoundError:
     st.error(f"Error: {ROOMS_FILE} not found. Please ensure it exists in the application directory.")
     AVAILABLE_ROOMS = []
-oasis = next((r for r in AVAILABLE_ROOMS if r["name"] == "Oasis"), {"capacity": 15})
+oasis = next((r for r in AVAILABLE_ROOMS if r["name"] == "Oasis"), {"capacity": 12})
 
 # -----------------------------------------------------
 # STATIC DATE CONFIGURATION - EDIT THESE VALUES MANUALLY
@@ -849,7 +849,7 @@ if add_adhoc_submit:
                             date_obj = current_oasis_display_mon_adhoc + timedelta(days=days_map_indices[day_str])
                             cur.execute("SELECT COUNT(*) FROM weekly_allocations WHERE room_name = 'Oasis' AND date = %s", (date_obj,))
                             count = cur.fetchone()[0]
-                            if count >= oasis.get("capacity", 15):
+                            if count >= oasis.get("capacity", 12):
                                 st.warning(f"⚠️ Oasis is full on {day_str}. Could not add {name_clean}.")
                                 added_to_all_selected = False
                             else:
@@ -884,7 +884,7 @@ st.write('I ran already the oasis allocation for next week (sorry my bad), howev
 oasis_overview_monday_display = st.session_state.oasis_display_monday 
 oasis_overview_days_dates = [oasis_overview_monday_display + timedelta(days=i) for i in range(5)]
 oasis_overview_day_names = [d.strftime("%A") for d in oasis_overview_days_dates]
-oasis_capacity = oasis.get("capacity", 13)
+oasis_capacity = oasis.get("capacity", 12)
 
 conn_matrix = get_connection(pool)
 if not conn_matrix: st.error("No DB connection for Oasis Overview")
