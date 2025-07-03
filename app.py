@@ -879,7 +879,6 @@ if add_adhoc_submit:
 # -----------------------------------------------------
 st.header("📊 Full Weekly Oasis Overview")
 st.markdown(admin_settings['oasis_allocations_display_markdown_content']) 
-st.write('I ran already the oasis allocation for next week (sorry my bad), however there is enough place in the TS oasis and Strategy oasis for Friday 27 june to come to the office')
 
 oasis_overview_monday_display = st.session_state.oasis_display_monday 
 oasis_overview_days_dates = [oasis_overview_monday_display + timedelta(days=i) for i in range(5)]
