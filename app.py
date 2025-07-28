@@ -16,7 +16,7 @@ st.set_page_config(page_title="Weekly Room Allocator - TS", layout="wide")
 
 DATABASE_URL = st.secrets.get("SUPABASE_DB_URI", os.environ.get("SUPABASE_DB_URI"))
 OFFICE_TIMEZONE_STR = st.secrets.get("OFFICE_TIMEZONE", os.environ.get("OFFICE_TIMEZONE", "UTC"))
-RESET_PASSWORD = "trainee"  # Consider moving to secrets
+RESET_PASSWORD = "boom123"  # Consider moving to secrets
 
 try:
     OFFICE_TIMEZONE = pytz.timezone(OFFICE_TIMEZONE_STR)
