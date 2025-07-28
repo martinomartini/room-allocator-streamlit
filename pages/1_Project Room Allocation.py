@@ -22,7 +22,7 @@ else:
 # --- Admin Section ---
 st.subheader("🔐 Admin Controls")
 pwd = st.text_input("Enter admin password:", type="password")
-if pwd == "trainee":
+if pwd == "boom123":
     st.success("✅ Access granted.")
 
     if st.button("🚀 Run Project Room Allocation"):
