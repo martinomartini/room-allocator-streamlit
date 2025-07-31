@@ -6,7 +6,9 @@ import pytz
 import random
 from itertools import combinations
 
-OFFICE_TIMEZONE = pytz.timezone("Europe/Amsterdam")  # Or your specific office timezone
+from config import config
+
+OFFICE_TIMEZONE = config.get_office_timezone()
 
 def get_day_mapping(base_monday_date=None):
     """
@@ -85,7 +87,7 @@ def run_allocation(database_url, only=None, base_monday_date=None):
             print(f"Cleared all allocations for week of {base_monday_date}")
 
         base_dir = os.path.dirname(os.path.abspath(__file__))
-        rooms_file_path = os.path.join(base_dir, "rooms.json")
+        rooms_file_path = os.path.join(base_dir, config.ROOMS_FILE)
         try:
             with open(rooms_file_path, "r") as f:
                 all_rooms_config = json.load(f)
