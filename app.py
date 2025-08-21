@@ -644,7 +644,7 @@ with st.expander("🔐 Admin Controls"):
 
 
         st.subheader("🌾 Reset Oasis Data")
-        if st.button(f"🗑️ Remove Oasis Allocations for Current Week - DINSDAG", key="btn_reset_oasis_alloc_week"):
+        if st.button(f"🗑️ Remove Oasis Allocations for Current Week - DONDERDAG", key="btn_reset_oasis_alloc_week"):
             conn_reset_oa = get_connection(pool)
             if conn_reset_oa:
                 try:
@@ -661,7 +661,7 @@ with st.expander("🔐 Admin Controls"):
             st.session_state.show_oasis_prefs_confirm = False
             
         if not st.session_state.show_oasis_prefs_confirm:
-            if st.button("🧽 Remove All Oasis Preferences (Global Action)", key="btn_reset_all_oasis_prefs"):
+            if st.button("🧽 Remove All Oasis Preferences (Global Action) - DINSDAG", key="btn_reset_all_oasis_prefs"):
                 st.session_state.show_oasis_prefs_confirm = True
                 st.rerun()
         else:
