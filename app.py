@@ -521,7 +521,7 @@ with st.expander("🔐 Admin Controls"):
                     st.error(f"❌ Only {success_count}/6 settings saved successfully.")
 
         st.subheader("🧠 Project Room Admin")
-        if st.button("🚀 Run Project Room Allocation", key="btn_run_proj_alloc"):
+        if st.button("🚀 Run Project Room Allocation - DONDERDAG", key="btn_run_proj_alloc"):
             if run_allocation:
                 # Pass the static Monday date to the allocation function
                 success, _ = run_allocation(DATABASE_URL, only="project", base_monday_date=st.session_state.project_rooms_display_monday) 
@@ -535,7 +535,7 @@ with st.expander("🔐 Admin Controls"):
                 st.error("run_allocation function not available.")
 
         st.subheader("🌿 Oasis Admin")
-        if st.button("🎲 Run Oasis Allocation", key="btn_run_oasis_alloc"):
+        if st.button("🎲 Run Oasis Allocation - VRIJDAG", key="btn_run_oasis_alloc"):
             if run_allocation:
                 # Pass the static Monday date to the allocation function
                 success, _ = run_allocation(DATABASE_URL, only="oasis", base_monday_date=st.session_state.oasis_display_monday) 
@@ -586,7 +586,7 @@ with st.expander("🔐 Admin Controls"):
             st.warning(f"Failed to load project room allocation data for admin edit: {e}")
 
         st.subheader("🧹 Reset Project Room Data")
-        if st.button(f"🗑️ Remove Project Allocations for Current Week", key="btn_reset_proj_alloc_week"):
+        if st.button(f"🗑️ Remove Project Allocations for Current Week - DONDERDAG", key="btn_reset_proj_alloc_week"):
             conn_reset_pra = get_connection(pool)
             if conn_reset_pra:
                 try:
@@ -607,7 +607,7 @@ with st.expander("🔐 Admin Controls"):
             st.session_state.show_proj_prefs_confirm = False
             
         if not st.session_state.show_proj_prefs_confirm:
-            if st.button("🧽 Remove All Project Room Preferences (Global Action)", key="btn_reset_all_proj_prefs"):
+            if st.button("🧽 Remove All Project Room Preferences (Global Action) - DINSDAG", key="btn_reset_all_proj_prefs"):
                 st.session_state.show_proj_prefs_confirm = True
                 st.rerun()
         else:
@@ -644,7 +644,7 @@ with st.expander("🔐 Admin Controls"):
 
 
         st.subheader("🌾 Reset Oasis Data")
-        if st.button(f"🗑️ Remove Oasis Allocations for Current Week", key="btn_reset_oasis_alloc_week"):
+        if st.button(f"🗑️ Remove Oasis Allocations for Current Week - DINSDAG", key="btn_reset_oasis_alloc_week"):
             conn_reset_oa = get_connection(pool)
             if conn_reset_oa:
                 try:
