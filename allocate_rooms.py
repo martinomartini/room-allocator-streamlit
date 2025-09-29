@@ -97,6 +97,10 @@ def run_allocation(database_url, only=None, base_monday_date=None):
         project_rooms = [r for r in all_rooms_config if r.get("name") != "Oasis" and "capacity" in r and "name" in r]
         oasis_config = next((r for r in all_rooms_config if r.get("name") == "Oasis" and "capacity" in r), None)
 
+        # Extract reserved rooms and non-reserved rooms
+        reserved_rooms = [r for r in project_rooms if "reserved_for" in r]
+        available_project_rooms = [r for r in project_rooms if "reserved_for" not in r]
+
         if not project_rooms and only in [None, "project"]:
             print("Warning: No project rooms defined in rooms.json or they are malformed.")
         if not oasis_config and only in [None, "oasis"]:
@@ -105,11 +109,44 @@ def run_allocation(database_url, only=None, base_monday_date=None):
 
         if only in [None, "project"]:
             print("Starting project room allocation...")
+            
+            # First, handle reserved rooms before processing normal team preferences
+            print("Processing reserved rooms...")
+            used_rooms_on_date = {date_obj: [] for date_obj in day_mapping.values()}
+            
+            for reserved_room in reserved_rooms:
+                room_name = reserved_room["name"]
+                reserved_for = reserved_room["reserved_for"]
+                reserved_project = reserved_room.get("reserved_project", "Reserved Project")
+                reserved_until_str = reserved_room.get("reserved_until")
+                
+                # Check if reservation is still valid
+                if reserved_until_str:
+                    try:
+                        reserved_until_date = datetime.strptime(reserved_until_str, "%Y-%m-%d").date()
+                        # Check if any day in the current week is before the expiration date
+                        week_end_date = max(day_mapping.values())
+                        if week_end_date > reserved_until_date:
+                            print(f"Skipping reservation for {room_name} - expired on {reserved_until_str}")
+                            continue
+                    except ValueError:
+                        print(f"Warning: Invalid reserved_until date format for {room_name}: {reserved_until_str}")
+                
+                print(f"Reserving {room_name} for {reserved_for} on project {reserved_project}")
+                
+                # Reserve for all weekdays (Monday through Friday)
+                for day_label, date_obj in day_mapping.items():
+                    team_name_display = f"{reserved_for} ({reserved_project})"
+                    cur.execute("INSERT INTO weekly_allocations (team_name, room_name, date) VALUES (%s, %s, %s)",
+                                (team_name_display, room_name, date_obj))
+                    used_rooms_on_date[date_obj].append(room_name)
+                    print(f"  → Reserved {room_name} for {team_name_display} on {day_label} ({date_obj})")
+            
+            # Now process normal team preferences
             cur.execute("SELECT team_name, team_size, preferred_days FROM weekly_preferences")
             team_preferences_raw = cur.fetchall()
             print(f"Found {len(team_preferences_raw)} team preferences")
 
-            used_rooms_on_date = {date_obj: [] for date_obj in day_mapping.values()}
             placed_teams_info = {}
 
             teams_for_mon_wed = []
@@ -160,7 +197,7 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                     print(f"  Trying to place {team_name} (size {team_size}) in {day1_label}/{day2_label}")
                     
                     possible_rooms_for_team = [
-                        room_config for room_config in project_rooms
+                        room_config for room_config in available_project_rooms
                         if room_config["name"] not in used_rooms_on_date[actual_date1]
                         and room_config["name"] not in used_rooms_on_date[actual_date2]
                         and room_config["capacity"] >= team_size
@@ -237,7 +274,7 @@ def run_allocation(database_url, only=None, base_monday_date=None):
                     fb_actual_date2 = day_mapping[fb_day2_label]
                     
                     possible_rooms_for_fallback = [
-                        room_config for room_config in project_rooms
+                        room_config for room_config in available_project_rooms
                         if room_config["name"] not in used_rooms_on_date[fb_actual_date1]
                         and room_config["name"] not in used_rooms_on_date[fb_actual_date2]
                         and room_config["capacity"] >= team_size
