@@ -1,7 +1,7 @@
 [
-  { "name": "Room D0205", "capacity": 6, "reserved_for": "Taras", "reserved_project": "DA" },
+  { "name": "Room D0205", "capacity": 6, "reserved_project": "DA" },
   { "name": "Room D0206", "capacity": 6 },
-  { "name": "Room D0208", "capacity": 4, "reserved_for": "Winfred", "reserved_project": "Confidential", "reserved_until": "2025-10-14" },
+  { "name": "Room D0208", "capacity": 4 },
   { "name": "Room D0209", "capacity": 4 },
   { "name": "Room D0210", "capacity": 4 },
   { "name": "Room D0289", "capacity": 4 },
